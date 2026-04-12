@@ -1,0 +1,177 @@
+/* Custom Highlight API — name must match CSS.highlights.set in content-script */
+::highlight(uwu-scanned-text) {
+  background-color: rgba(37, 99, 235, 0.28);
+  color: inherit;
+}
+
+/* Rescan pass: candidate inputs / contenteditable hosts (see syncFieldCandidateMarks) */
+.uwu-field-candidate {
+  background-color: rgba(250, 204, 21, 0.32) !important;
+  box-shadow: inset 0 0 0 1px rgba(161, 98, 7, 0.45) !important;
+}
+
+/**
+ * Inline ciphertext chip: flows with text (no flex “row” that widens like a block).
+ * Colors are fixed (not inherited) so contrast holds on dark/light host pages.
+ */
+.uwu-envelope-wrapper {
+  display: inline;
+  vertical-align: baseline;
+  margin: 0 0.08em;
+  line-height: inherit;
+  font-size: inherit;
+  max-width: 100%;
+}
+
+.uwu-scanned-ciphertext {
+  /* Keep outer wrapper visually neutral — chip styling is inside closed shadow */
+  box-shadow: none;
+  padding: 0;
+  border-radius: 0;
+}
+
+/* Light-DOM host for closed shadow (chip UI lives in shadow; page JS cannot read inside) */
+.uwu-envelope-shadow-host {
+  display: inline;
+  vertical-align: baseline;
+}
+
+/* Page chrome host (position set inline; shadow lives inside) */
+.uwu-chrome-dock {
+  pointer-events: auto;
+}
+
+/* Click-to-encrypt tooltip anchored near the linked field (position in JS) */
+.uwu-field-encrypt-tooltip-host {
+  pointer-events: auto;
+}
+
+/* Floating scan summary (excluded from highlight pass) */
+.uwu-scan-hud {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  max-width: min(320px, calc(100vw - 24px));
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #e8ecf4;
+  pointer-events: auto;
+}
+
+.uwu-scan-hud-drag {
+  flex: 0 0 auto;
+  width: 100%;
+  margin: 0;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 10px 10px 0 0;
+  background: #1a2230;
+  color: #8b98ad;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: grab;
+  text-align: left;
+  border-bottom: 1px solid #3d4a60;
+}
+
+.uwu-scan-hud-drag:hover {
+  background: #222b3d;
+  color: #c5cedd;
+}
+
+.uwu-scan-hud-drag:active {
+  cursor: grabbing;
+}
+
+.uwu-scan-hud-inner {
+  flex: 1 1 auto;
+  background: rgba(26, 31, 43, 0.94);
+  border: 1px solid rgba(61, 74, 96, 0.95);
+  border-top: none;
+  border-radius: 0 0 10px 10px;
+  padding: 10px 12px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(8px);
+}
+
+.uwu-scan-hud-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.uwu-scan-hud-headline {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+}
+
+.uwu-scan-hud-pill {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: #9ec5ff;
+  letter-spacing: 0.02em;
+}
+
+.uwu-scan-hud.is-collapsed .uwu-scan-hud-details {
+  display: none;
+}
+
+.uwu-scan-hud.is-collapsed .uwu-scan-hud-top {
+  margin-bottom: 0;
+}
+
+.uwu-scan-hud-title {
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  font-size: 11px;
+  text-transform: uppercase;
+  color: #8b98ad;
+}
+
+.uwu-scan-hud-toggle {
+  appearance: none;
+  border: none;
+  background: rgba(255, 255, 255, 0.08);
+  color: #c5cedd;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  padding: 0;
+}
+
+.uwu-scan-hud-toggle:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.uwu-scan-hud-stats {
+  margin: 0;
+  color: #e8ecf4;
+}
+
+.uwu-scan-hud-stats strong {
+  color: #6ea8ff;
+  font-weight: 700;
+}
+
+.uwu-scan-hud-meta {
+  margin: 6px 0 0;
+  font-size: 11px;
+  color: #8b98ad;
+}
+
+.uwu-scan-hud-meta.muted {
+  color: #8b98ad;
+}

@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>UWU Overlay Settings</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        max-width: 480px;
+        margin: 24px auto;
+        padding: 0 16px;
+        line-height: 1.45;
+      }
+      .pin-gate {
+        border: 1px solid #ccc;
+        padding: 20px;
+        border-radius: 8px;
+        margin-bottom: 24px;
+      }
+      .pin-gate[hidden],
+      #main-options[hidden] {
+        display: none !important;
+      }
+      label {
+        display: block;
+        margin-top: 12px;
+        font-weight: 600;
+      }
+      input {
+        width: 100%;
+        max-width: 280px;
+        padding: 8px;
+        margin-top: 4px;
+        box-sizing: border-box;
+      }
+      button {
+        margin-top: 16px;
+        padding: 8px 16px;
+        cursor: pointer;
+      }
+      #pinGateStatus,
+      #status {
+        margin-top: 12px;
+        min-height: 1.2em;
+      }
+      .is-error {
+        color: #b91c1c;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>UWU Overlay Settings</h1>
+
+    <div id="pin-gate" class="pin-gate" hidden>
+      <h2 id="pin-gate-title">Unlock</h2>
+      <p id="pin-gate-desc">A strong secret protects your keys for this browser session.</p>
+      <div id="pin-create-fields">
+        <label for="pinCreatePin">Secret</label>
+        <input id="pinCreatePin" type="password" minlength="12" maxlength="256" autocomplete="new-password" />
+        <label for="pinCreateConfirm">Confirm secret</label>
+        <input id="pinCreateConfirm" type="password" minlength="12" maxlength="256" autocomplete="new-password" />
+        <button type="button" id="pinCreateBtn">Save secret</button>
+      </div>
+      <div id="pin-unlock-fields" hidden>
+        <label for="pinUnlockInput">Secret</label>
+        <input id="pinUnlockInput" type="password" maxlength="256" autocomplete="current-password" />
+        <button type="button" id="pinUnlockBtn">Unlock</button>
+      </div>
+      <p id="pinGateStatus" role="status"></p>
+    </div>
+
+    <main id="main-options" hidden>
+      <label>
+        <input id="autoDecrypt" type="checkbox" />
+        Auto decrypt detected messages
+      </label>
+      <br />
+      <label>
+        <input id="clickToReveal" type="checkbox" />
+        Keep messages hidden until clicked
+      </label>
+      <br />
+      <label>
+        Observer debounce (ms)
+        <input id="observerDebounceMs" type="number" min="50" step="50" />
+      </label>
+      <br />
+      <button id="saveBtn">Save</button>
+      <div id="status"></div>
+    </main>
+
+    <script type="module" src="./options.js"></script>
+  </body>
+</html>

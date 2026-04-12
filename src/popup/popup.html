@@ -1,0 +1,705 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>UWU Overlay</title>
+    <link rel="stylesheet" href="./popup.css" />
+  </head>
+  <body>
+    <div id="popup-boot" class="popup-boot">
+      <div class="popup-boot-inner">
+        <img
+          class="popup-boot-logo"
+          src="../../icons/icon128.png"
+          width="72"
+          height="72"
+          alt=""
+          decoding="async"
+        />
+        <p class="popup-boot-title">UWU</p>
+        <p class="popup-boot-text">Getting ready…</p>
+      </div>
+    </div>
+
+    <div id="pin-gate" class="pin-gate" hidden>
+      <div class="pin-gate-inner">
+        <div class="pin-gate-card">
+          <header class="pin-gate-header">
+            <img
+              class="pin-gate-logo"
+              src="../../icons/icon128.png"
+              width="96"
+              height="96"
+              alt=""
+              decoding="async"
+            />
+            <h2 id="pin-gate-title" class="pin-gate-title">Welcome</h2>
+            <p id="pin-gate-desc" class="help pin-gate-desc">Loading…</p>
+          </header>
+          <div class="pin-gate-body">
+            <div id="pin-create-fields">
+              <div class="label-row">
+                <label class="label" for="pinCreatePin">Passphrase</label>
+                <button type="button" class="btn btn-ghost btn-tiny btn-toggle-password" data-password-for="pinCreatePin">
+                  Show
+                </button>
+              </div>
+              <input
+                id="pinCreatePin"
+                class="input"
+                type="password"
+                minlength="12"
+                maxlength="256"
+                autocomplete="new-password"
+                aria-describedby="pin-gate-desc pinStrengthText"
+              />
+              <div class="pin-strength" id="pinStrengthPanel">
+                <div class="pin-strength-track" aria-hidden="true">
+                  <div id="pinStrengthFill" class="pin-strength-fill"></div>
+                </div>
+                <p id="pinStrengthText" class="pin-strength-label" role="status"></p>
+              </div>
+              <div class="label-row">
+                <label class="label" for="pinCreateConfirm">Confirm</label>
+                <button type="button" class="btn btn-ghost btn-tiny btn-toggle-password" data-password-for="pinCreateConfirm">
+                  Show
+                </button>
+              </div>
+              <input
+                id="pinCreateConfirm"
+                class="input"
+                type="password"
+                minlength="12"
+                maxlength="256"
+                autocomplete="new-password"
+                aria-describedby="pinMatchText"
+              />
+              <p id="pinMatchText" class="pin-match-label" role="status"></p>
+              <button type="button" id="pinCreateBtn" class="btn btn-primary btn-block" disabled>Save & continue</button>
+            </div>
+            <div id="pin-unlock-fields" hidden>
+              <div class="label-row">
+                <label class="label" for="pinUnlockInput">Passphrase</label>
+                <button type="button" class="btn btn-ghost btn-tiny btn-toggle-password" data-password-for="pinUnlockInput">
+                  Show
+                </button>
+              </div>
+              <input
+                id="pinUnlockInput"
+                class="input"
+                type="password"
+                maxlength="256"
+                autocomplete="current-password"
+              />
+              <button type="button" id="pinUnlockBtn" class="btn btn-primary btn-block">Unlock</button>
+            </div>
+          </div>
+          <p id="pinGateStatus" class="status pin-gate-status" role="status"></p>
+        </div>
+      </div>
+    </div>
+
+    <div id="main-shell" class="shell" role="application" hidden data-active-panel="send">
+      <div class="context-bar" role="region" aria-label="Recipient">
+        <div class="context-strip">
+          <div class="context-slot context-slot-them context-slot-full">
+            <div class="context-slot-mark" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path
+                  d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            </div>
+            <div class="context-slot-body">
+              <span class="context-slot-kicker" id="context-bar-them-label">Them</span>
+              <label class="visually-hidden" for="recipientSelect">Recipient or Anyone</label>
+              <select id="recipientSelect" class="input context-slot-select" aria-labelledby="context-bar-them-label"></select>
+            </div>
+          </div>
+        </div>
+        <div id="contextBarHintWrap" class="context-bar-hint-wrap" hidden>
+          <span class="context-bar-hint-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <path
+                d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z"
+                stroke="currentColor"
+                stroke-width="1.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+          </span>
+          <p id="contextBarHint" class="context-bar-hint" aria-live="polite"></p>
+        </div>
+      </div>
+
+      <div class="body-scroll">
+        <section id="panel-send" class="panel is-active" aria-labelledby="tab-send-label">
+          <div class="section-card">
+            <div class="section-card-head">
+              <h2 class="title-with-icon">
+                <span class="title-icon-wrap" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path
+                      d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"
+                      stroke="currentColor"
+                      stroke-width="1.5"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
+                </span>
+                <span class="title-text">Send encrypted</span>
+              </h2>
+              <p class="section-card-hint">Pick <strong>Them</strong> in the bar to lock encryption. Signing uses <strong>You</strong> on Who.</p>
+            </div>
+            <div class="field-group field-group-tight">
+              <label class="label" for="plaintext">Message</label>
+              <textarea
+                id="plaintext"
+                class="input input-textarea"
+                placeholder="Type a message…"
+                rows="4"
+                title="Encrypted for Them using their public key"
+              ></textarea>
+            </div>
+            <button id="encryptBtn" type="button" class="btn btn-primary">Encrypt</button>
+            <div class="field-group field-group-tight">
+              <div class="label-row">
+                <label class="label" for="ciphertextOutput">Ciphertext</label>
+                <button id="copyCipherBtn" type="button" class="btn btn-ghost btn-small">Copy</button>
+              </div>
+              <textarea id="ciphertextOutput" class="input input-textarea input-mono" readonly rows="3" placeholder="!uwu!…!uwu!"></textarea>
+            </div>
+            <p id="encryptStatus" class="status status-in-card" role="status"></p>
+          </div>
+        </section>
+
+        <section id="panel-decrypt" class="panel" aria-labelledby="tab-decrypt-label">
+          <div class="section-card">
+            <div class="section-card-head">
+              <h2 class="title-with-icon">
+                <span class="title-icon-wrap title-icon-wrap-warm" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path
+                      d="M13.5 10.5V6.75a4.5 4.5 0 119 0v3.75M3.75 21.75h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H3.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"
+                      stroke="currentColor"
+                      stroke-width="1.5"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
+                </span>
+                <span class="title-text">Decrypt</span>
+              </h2>
+              <p class="section-card-hint">Decrypts with <strong>You</strong> (Who). <strong>Them</strong> in the bar filters page senders.</p>
+            </div>
+            <div class="field-group field-group-tight">
+              <label class="label" for="ciphertextInput">Paste ciphertext</label>
+              <textarea
+                id="ciphertextInput"
+                class="input input-textarea input-mono"
+                rows="4"
+                placeholder="!uwu!…!uwu!"
+                title="Wrapped !uwu!…!uwu! or compact payload only"
+              ></textarea>
+            </div>
+            <button id="decryptBtn" type="button" class="btn btn-secondary">Decrypt</button>
+            <div class="field-group field-group-tight">
+              <div class="label-row">
+                <label class="label" for="decryptOutput">Message</label>
+                <button id="copyDecryptBtn" type="button" class="btn btn-ghost btn-small">Copy</button>
+              </div>
+              <textarea id="decryptOutput" class="input input-textarea" readonly rows="4" placeholder="Decrypted text"></textarea>
+            </div>
+            <p id="decryptStatus" class="status status-in-card" role="status"></p>
+          </div>
+        </section>
+
+        <section id="panel-who" class="panel" aria-labelledby="tab-who-label">
+          <div class="section-card who-card who-card-me">
+            <label class="label who-profile-label" for="profileSelect">You</label>
+            <select id="profileSelect" class="input who-profile-select"></select>
+            <p id="whoMeDetail" class="who-detail who-detail-tight" aria-live="polite"></p>
+          </div>
+
+          <div class="section-card who-card who-card-them">
+            <p class="who-them-kicker">Them — set in the bar on other tabs</p>
+            <p id="whoThemDetail" class="who-detail who-detail-tight" aria-live="polite"></p>
+          </div>
+        </section>
+
+        <section id="panel-identities" class="panel" aria-labelledby="tab-identities-label">
+          <div class="section-card">
+            <div class="section-card-head">
+              <h2 class="title-with-icon">
+                <span class="title-icon-wrap" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path
+                      d="M15 9h3.75M15 12h3.75M15 15h3.75M4.5 19.5h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5zm6-10.125a1.875 1.875 0 11-3.75 0 1.875 1.875 0 013.75 0zm1.294 6.336a6.721 6.721 0 01-3.17.789 6.721 6.721 0 01-3.168-.789 3.376 3.376 0 016.338 0z"
+                      stroke="currentColor"
+                      stroke-width="1.5"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
+                </span>
+                <span class="title-text">New identity</span>
+              </h2>
+              <p class="section-card-hint">Extra profiles on this device. Export uses whoever is <strong>You</strong> on the Who tab.</p>
+            </div>
+            <div class="field-group field-group-tight">
+              <label class="label" for="profileName">Name</label>
+              <input id="profileName" class="input" type="text" placeholder="e.g. Work laptop" autocomplete="off" />
+            </div>
+            <button id="generateProfileBtn" type="button" class="btn btn-primary">Generate keys</button>
+            <div id="generateStatus" class="status status-in-card"></div>
+          </div>
+
+          <div class="section-card">
+            <div class="section-card-head">
+              <h2 class="title-with-icon">
+                <span class="title-icon-wrap title-icon-wrap-warm" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path
+                      d="M7.217 10.907a2.25 2.25 0 100 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186l9.566-5.314m-9.566 7.5l9.566 5.314m0 0a2.25 2.25 0 103.935 2.186 2.25 2.25 0 00-3.935-2.186zm0-12.814a2.25 2.25 0 10-3.933-2.185 2.25 2.25 0 003.933 2.185z"
+                      stroke="currentColor"
+                      stroke-width="1.5"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
+                </span>
+                <span class="title-text">Invite (handshake)</span>
+              </h2>
+              <p class="section-card-hint">They need the blob and your code — share both, ideally not only through public chat.</p>
+            </div>
+            <div class="field-group field-group-tight">
+              <div class="label-row">
+                <label class="label" for="handshakeExportPass">Code</label>
+                <button type="button" class="btn btn-ghost btn-tiny btn-toggle-password" data-password-for="handshakeExportPass">
+                  Show
+                </button>
+              </div>
+              <input id="handshakeExportPass" class="input" type="password" autocomplete="new-password" maxlength="256" placeholder="Min. 4 characters" />
+            </div>
+            <button id="encryptHandshakeBtn" type="button" class="btn btn-primary">Create handshake blob</button>
+            <div class="field-group field-group-tight">
+              <div class="label-row">
+                <label class="label" for="exportOutput">Blob</label>
+                <button id="copyExportBtn" type="button" class="btn btn-ghost btn-small">Copy</button>
+              </div>
+              <textarea id="exportOutput" class="input input-textarea input-mono" readonly rows="4" placeholder="Handshake output"></textarea>
+            </div>
+            <div class="share-delivery" role="note" aria-label="Safer ways to deliver the handshake">
+              <p class="share-delivery-title">
+                <span class="share-delivery-title-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path
+                      d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z"
+                      stroke="currentColor"
+                      stroke-width="1.5"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
+                </span>
+                <span>Prefer delivering the blob like this</span>
+              </p>
+              <ul class="share-delivery-list">
+                <li>
+                  <strong>USB drive</strong> — save the blob to a file on a stick they receive in person (good for long payloads).
+                </li>
+                <li>
+                  <strong>Printed or handwritten note</strong> — workable for shorter blobs; pair with the code through another path.
+                </li>
+                <li>
+                  <strong>End-to-end channel</strong> — Signal, Wire, or another encrypted messenger; in person or voice also count.
+                </li>
+              </ul>
+              <p class="share-delivery-foot">When you can, send the <strong>code</strong> and the <strong>blob</strong> by different routes so one leak is not enough.</p>
+            </div>
+          </div>
+
+          <div class="section-card section-card-muted">
+            <div class="section-card-head">
+              <h2 class="title-with-icon">
+                <span class="title-icon-wrap title-icon-wrap-muted" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path
+                      d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5"
+                      stroke="currentColor"
+                      stroke-width="1.5"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
+                </span>
+                <span class="title-text">Public JSON</span>
+              </h2>
+              <p class="section-card-hint">Not encrypted — for local copy only.</p>
+            </div>
+            <button id="exportBtn" type="button" class="btn btn-secondary">Export public keys (JSON)</button>
+          </div>
+        </section>
+
+        <section id="panel-contacts" class="panel" aria-labelledby="tab-contacts-label">
+          <div class="section-card">
+            <div class="section-card-head">
+              <h2 class="title-with-icon">
+                <span class="title-icon-wrap" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path
+                      d="M18 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zM3 19.235v-.11a6.6 6.6 0 0114.33-.805 4.375 4.375 0 01-8.843 0 6.6 6.6 0 0114.33.805v.106"
+                      stroke="currentColor"
+                      stroke-width="1.5"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
+                </span>
+                <span class="title-text">Add contact</span>
+              </h2>
+              <p class="section-card-hint">Handshake blob + code, or plain JSON if they sent that.</p>
+            </div>
+            <div class="field-group field-group-tight">
+              <label class="label" for="contactJson">Payload</label>
+              <textarea id="contactJson" class="input input-textarea input-mono" rows="4" placeholder="Blob or JSON"></textarea>
+            </div>
+            <div class="field-group field-group-tight">
+              <div class="label-row">
+                <label class="label" for="contactHandshakePass">Handshake code</label>
+                <button type="button" class="btn btn-ghost btn-tiny btn-toggle-password" data-password-for="contactHandshakePass">
+                  Show
+                </button>
+              </div>
+              <input id="contactHandshakePass" class="input" type="password" autocomplete="off" maxlength="256" placeholder="Empty if plain JSON" />
+            </div>
+            <button id="importContactBtn" type="button" class="btn btn-primary">Import</button>
+            <p id="contactImportStatus" class="status status-in-card" role="status"></p>
+          </div>
+
+          <div class="section-card">
+            <div class="section-card-head">
+              <h2 class="title-with-icon">
+                <span class="title-icon-wrap title-icon-wrap-warm" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path
+                      d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 010 3.75H5.625a1.875 1.875 0 010-3.75z"
+                      stroke="currentColor"
+                      stroke-width="1.5"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
+                </span>
+                <span class="title-text">Saved contacts</span>
+              </h2>
+            </div>
+            <ul id="contactList" class="contact-list contact-list-flush"></ul>
+          </div>
+        </section>
+
+        <section id="panel-settings" class="panel" aria-labelledby="tab-settings-label">
+          <div class="section-card">
+            <div class="section-card-head">
+              <h2 class="title-with-icon">
+                <span class="title-icon-wrap" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path
+                      d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418"
+                      stroke="currentColor"
+                      stroke-width="1.5"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
+                </span>
+                <span class="title-text">Pages</span>
+              </h2>
+              <p class="section-card-hint">How ciphertext is found and shown on websites.</p>
+            </div>
+            <label class="check-row">
+              <input id="autoDecrypt" type="checkbox" />
+              <span>Auto-decrypt detected blocks</span>
+            </label>
+            <label class="check-row">
+              <input id="clickToReveal" type="checkbox" />
+              <span>Hide plaintext until clicked</span>
+            </label>
+            <div class="field-group field-group-tight">
+              <label class="label" for="observerDebounceMs">Scan debounce (ms)</label>
+              <input id="observerDebounceMs" class="input" type="number" min="50" step="50" title="Delay after DOM changes before rescanning" />
+            </div>
+          </div>
+
+          <div class="section-card">
+            <div class="section-card-head">
+              <h2 class="title-with-icon">
+                <span class="title-icon-wrap title-icon-wrap-warm" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path
+                      d="m16.862 4.487 1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0015.75 21H5.25A2.25 2.25 003 18.75V8.25A2.25 2.25 005.25 6H10"
+                      stroke="currentColor"
+                      stroke-width="1.5"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
+                </span>
+                <span class="title-text">Encrypt from fields</span>
+              </h2>
+              <p class="section-card-hint">Dock + tooltip on focused inputs. <strong>Esc</strong> clears focus binding. Uses <strong>Them</strong>.</p>
+            </div>
+            <div class="field-group field-group-tight">
+              <label class="label" for="inputEncryptMode">Mode</label>
+              <select id="inputEncryptMode" class="input">
+                <option value="off">Off</option>
+                <option value="live_overlay">Overlay — type in overlay, paste into field</option>
+                <option value="button_replace">In place — type in field, replace via button</option>
+              </select>
+            </div>
+            <p id="settingsStatus" class="status status-in-card settings-autosave-status" role="status"></p>
+          </div>
+
+          <div class="section-card section-card-backup">
+            <div class="section-card-head">
+              <h2 class="title-with-icon">
+                <span class="title-icon-wrap" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path
+                      d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z"
+                      stroke="currentColor"
+                      stroke-width="1.5"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
+                </span>
+                <span class="title-text">Backup</span>
+              </h2>
+              <p class="section-card-hint">Keys, contacts, and settings in one encrypted file.</p>
+            </div>
+
+            <div class="backup-block" aria-labelledby="backup-export-label">
+              <h3 class="backup-block-title" id="backup-export-label">
+                <span class="backup-block-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path
+                      d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"
+                      stroke="currentColor"
+                      stroke-width="1.5"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
+                </span>
+                <span>Export</span>
+              </h3>
+              <div class="backup-fields">
+                <div class="label-row">
+                  <label class="label" for="backupExportPass">Encrypt with</label>
+                  <button type="button" class="btn btn-ghost btn-tiny btn-toggle-password" data-password-for="backupExportPass">
+                    Show
+                  </button>
+                </div>
+                <input
+                  id="backupExportPass"
+                  class="input"
+                  type="password"
+                  autocomplete="new-password"
+                  maxlength="256"
+                  placeholder="Password (12+ chars)"
+                  title="Not saved inside the backup file"
+                />
+                <div class="label-row">
+                  <label class="label" for="backupExportPassConfirm">Again</label>
+                  <button type="button" class="btn btn-ghost btn-tiny btn-toggle-password" data-password-for="backupExportPassConfirm">
+                    Show
+                  </button>
+                </div>
+                <input id="backupExportPassConfirm" class="input" type="password" autocomplete="new-password" maxlength="256" placeholder="Confirm password" />
+                <button type="button" id="exportFullBackupBtn" class="btn btn-secondary">Download</button>
+              </div>
+            </div>
+
+            <div class="backup-block" aria-labelledby="backup-restore-label">
+              <h3 class="backup-block-title" id="backup-restore-label">
+                <span class="backup-block-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path
+                      d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"
+                      stroke="currentColor"
+                      stroke-width="1.5"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
+                </span>
+                <span>Restore</span>
+              </h3>
+              <div class="backup-fields">
+                <label class="label" for="fullBackupFile">Backup file</label>
+                <input type="file" id="fullBackupFile" class="input input-file" accept="application/json,.json" />
+                <div class="label-row">
+                  <label class="label" for="backupImportPass">Password</label>
+                  <button type="button" class="btn btn-ghost btn-tiny btn-toggle-password" data-password-for="backupImportPass">
+                    Show
+                  </button>
+                </div>
+                <input
+                  id="backupImportPass"
+                  class="input"
+                  type="password"
+                  autocomplete="off"
+                  maxlength="256"
+                  placeholder="If file is encrypted"
+                  title="Unencrypted JSON backup: leave password empty. After picking a file, confirm by typing REPLACE."
+                />
+              </div>
+            </div>
+
+            <p id="backupStatus" class="status status-in-card" role="status"></p>
+          </div>
+
+        </section>
+      </div>
+
+      <nav class="tab-bar" aria-label="Main">
+        <button type="button" class="tab is-active" data-panel="send" id="tab-send">
+          <span class="tab-icon" aria-hidden="true">
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path
+                d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"
+              />
+            </svg>
+          </span>
+          <span id="tab-send-label" class="tab-label">Send</span>
+        </button>
+        <button type="button" class="tab" data-panel="decrypt" id="tab-decrypt">
+          <span class="tab-icon" aria-hidden="true">
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path
+                d="M13.5 10.5V6.75a4.5 4.5 0 119 0v3.75M3.75 21.75h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H3.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"
+              />
+            </svg>
+          </span>
+          <span id="tab-decrypt-label" class="tab-label">Decrypt</span>
+        </button>
+        <button type="button" class="tab" data-panel="who" id="tab-who">
+          <span class="tab-icon" aria-hidden="true">
+            <!-- Heroicons: user-group -->
+            <svg
+              width="22"
+              height="22"
+              viewBox="0 0 24 24"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path
+                d="M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m.94 3.198l.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0112 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 016 18.719m12 0a5.971 5.971 0 00-.941-3.197m0 0A5.995 5.995 0 0012 12.75a5.995 5.995 0 00-5.058 2.772m0 0a3 3 0 00-4.681 2.72 8.986 8.986 0 003.74.477m.94-3.197a5.971 5.971 0 00-.94 3.197M15 6.75a3 3 0 11-6 0 3 3 0 016 0zm6 3a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0zm-13.5 0a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z"
+              />
+            </svg>
+          </span>
+          <span id="tab-who-label" class="tab-label">Who</span>
+        </button>
+        <button type="button" class="tab" data-panel="identities" id="tab-identities">
+          <span class="tab-icon" aria-hidden="true">
+            <!-- Heroicons: identification -->
+            <svg
+              width="22"
+              height="22"
+              viewBox="0 0 24 24"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path
+                d="M15 9h3.75M15 12h3.75M15 15h3.75M4.5 19.5h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5zm6-10.125a1.875 1.875 0 11-3.75 0 1.875 1.875 0 013.75 0zm1.294 6.336a6.721 6.721 0 01-3.17.789 6.721 6.721 0 01-3.168-.789 3.376 3.376 0 016.338 0z"
+              />
+            </svg>
+          </span>
+          <span id="tab-identities-label" class="tab-label">Identities</span>
+        </button>
+        <button type="button" class="tab" data-panel="contacts" id="tab-contacts">
+          <span class="tab-icon" aria-hidden="true">
+            <!-- Heroicons: users -->
+            <svg
+              width="22"
+              height="22"
+              viewBox="0 0 24 24"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path
+                d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z"
+              />
+            </svg>
+          </span>
+          <span id="tab-contacts-label" class="tab-label">Contacts</span>
+        </button>
+        <button type="button" class="tab" data-panel="settings" id="tab-settings">
+          <span class="tab-icon" aria-hidden="true">
+            <!-- Heroicons: cog-6-tooth -->
+            <svg
+              width="22"
+              height="22"
+              viewBox="0 0 24 24"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path
+                d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 010 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 010-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28z"
+              />
+              <path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </span>
+          <span id="tab-settings-label" class="tab-label">Settings</span>
+        </button>
+      </nav>
+    </div>
+
+    <script type="module" src="./popup.js"></script>
+  </body>
+</html>
+
