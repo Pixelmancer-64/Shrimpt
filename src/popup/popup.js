@@ -413,7 +413,8 @@ async function loadSettingsUi() {
   }
   els.observerDebounceMs.value = settings.observerDebounceMs;
   if (els.inputEncryptMode) {
-    els.inputEncryptMode.value = settings.inputEncryptMode || "off";
+    const m = settings.inputEncryptMode;
+    els.inputEncryptMode.value = m === "live_overlay" ? "live_overlay" : "button_replace";
   }
   updateClickToRevealRowVisibility();
 }
@@ -429,17 +430,15 @@ function schedulePersistSettings() {
 async function persistSettings() {
   if (!els.settingsStatus) return;
   try {
-    const mode = els.inputEncryptMode?.value || "off";
+    const mode = els.inputEncryptMode?.value === "live_overlay" ? "live_overlay" : "button_replace";
     const payload = {
       autoDecrypt: els.autoDecrypt.checked,
       clickToReveal: els.clickToReveal.checked,
       showScanReadIndicators: els.showScanReadIndicators ? els.showScanReadIndicators.checked : true,
       observerDebounceMs: Number(els.observerDebounceMs.value) || 250,
-      inputEncryptMode: mode
+      inputEncryptMode: mode,
+      lastInputEncryptMode: mode
     };
-    if (mode !== "off") {
-      payload.lastInputEncryptMode = mode;
-    }
     await request(MESSAGE_TYPES.UPDATE_SETTINGS, payload);
     els.settingsStatus.textContent = "Saved.";
     els.settingsStatus.classList.remove("is-error");

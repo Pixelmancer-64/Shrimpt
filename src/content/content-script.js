@@ -19,7 +19,7 @@ const DEFAULT_SETTINGS = {
   observerDebounceMs: 250,
   scanTextLimit: 120000,
   selectedRecipientContactId: null,
-  inputEncryptMode: "off",
+  inputEncryptMode: "button_replace",
   lastInputEncryptMode: "button_replace",
   uwuDockLeft: null,
   uwuDockTop: null,
@@ -160,9 +160,7 @@ async function bootstrap() {
   startObserver();
   scheduleLateRescans();
   startFieldEncryptFocusCapture();
-  if (getInputEncryptMode() !== "off") {
-    scheduleFieldAutoBind();
-  }
+  scheduleFieldAutoBind();
 }
 
 async function onIdentityOrConversationStorageChanged() {
@@ -170,14 +168,13 @@ async function onIdentityOrConversationStorageChanged() {
   applyHudLayoutPosition();
   applyDockLayoutPosition();
   syncFieldProtectionChrome();
-  if (getInputEncryptMode() !== "off") {
-    scheduleFieldAutoBind();
-  }
-  const wrappers = [...document.querySelectorAll(".shrimpt-envelope-wrapper[data-shrimpt-compact]")];
+  scheduleFieldAutoBind();
+  const wrappers = [...document.querySelectorAll("[data-shrimpt-compact]")];
   shrimptLog("boot", "identity/settings storage changed; rebuilding envelopes", { count: wrappers.length });
   for (const w of wrappers) {
     await rebuildEnvelopeWrapper(w);
   }
+  syncFieldCandidateMarks();
   scheduleRescan();
 }
 
@@ -197,7 +194,7 @@ async function refreshEnvelopesAfterSessionUnlock() {
   } catch (_e) {
     /* keep cached settings */
   }
-  const wrappers = [...document.querySelectorAll(".shrimpt-envelope-wrapper[data-shrimpt-compact]")];
+  const wrappers = [...document.querySelectorAll("[data-shrimpt-compact]")];
   shrimptLog("boot", "session unlocked; rebuilding envelope chips", { count: wrappers.length });
   for (const w of wrappers) {
     if (!w.isConnected) continue;
@@ -257,7 +254,7 @@ function acceptEligibleTextNode(node) {
   if (!parent) return false;
   if (["SCRIPT", "STYLE", "NOSCRIPT", "TEXTAREA"].includes(parent.tagName)) return false;
   if (parent.closest(".shrimpt-scan-hud, .shrimpt-chrome-dock")) return false;
-  if (parent.closest(".shrimpt-envelope-wrapper")) return false;
+  if (parent.closest("[data-shrimpt-compact]")) return false;
   return true;
 }
 
@@ -448,8 +445,8 @@ function ensureScanHud() {
       </div>
       <div class="shrimpt-scan-hud-details">
         <label class="shrimpt-scan-hud-hl-row">
-          <input type="checkbox" class="shrimpt-scan-hud-hl-cb" checked aria-label="Highlight text regions the scanner reads on the page" />
-          <span class="shrimpt-scan-hud-hl-label">Highlight scanned text</span>
+          <input type="checkbox" class="shrimpt-scan-hud-hl-cb" checked aria-label="Show scan highlights on the page and yellow tint on text fields" />
+          <span class="shrimpt-scan-hud-hl-label">Show scan &amp; field indicators</span>
         </label>
         <p class="shrimpt-scan-hud-stats"><strong class="shrimpt-scan-hud-count">—</strong></p>
         <p class="shrimpt-scan-hud-meta muted"></p>
@@ -515,7 +512,7 @@ function updateScanHud({
     incompleteFragments > 0 && readIndicatorsOn
       ? ` <strong>${incompleteFragments}</strong> incomplete <code>!uwu!</code> fragment${incompleteFragments === 1 ? "" : "s"} (red tint).`
       : "";
-  const indOff = readIndicatorsOn ? "" : " Read indicators off (blue/red tints hidden).";
+  const indOff = readIndicatorsOn ? "" : " Read indicators off (highlights and yellow field tint hidden).";
   statsEl.innerHTML = `<strong class="shrimpt-scan-hud-count">${textNodeCount}</strong> text region${textNodeCount === 1 ? "" : "s"} scanned · <strong>${ciphertextBlocks}</strong> encrypted block${ciphertextBlocks === 1 ? "" : "s"}${hl}${frag}${indOff}`;
 
   const time = new Date().toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
@@ -574,7 +571,7 @@ async function rescanPage() {
     clearFragmentHighlightOnly();
   }
 
-  const ciphertextBlocks = document.querySelectorAll(".shrimpt-envelope-wrapper").length;
+  const ciphertextBlocks = document.querySelectorAll("[data-shrimpt-compact]").length;
   const highlightSupported = typeof Highlight !== "undefined" && Boolean(CSS.highlights?.set);
 
   updateScanHud({
@@ -597,20 +594,33 @@ async function rescanPage() {
   syncFieldCandidateMarks();
 }
 
+function clearFieldCandidateMarks() {
+  for (const oldEl of lastFieldCandidateEls) {
+    if (oldEl.isConnected) oldEl.classList.remove(SHRIMPT_FIELD_CANDIDATE_CLASS);
+  }
+  lastFieldCandidateEls = new Set();
+}
+
 /**
  * Yellow tint on inputs/textareas and outermost contenteditable hosts so you can
  * see which controls the extension treats as user-input surfaces.
+ * Controlled by the same setting as scan read highlights (popup / options / HUD).
  */
 function syncFieldCandidateMarks() {
   const root = document.body;
   if (!root) return;
+
+  if (!scanReadIndicatorsEnabled()) {
+    clearFieldCandidateMarks();
+    return;
+  }
 
   const next = new Set();
 
   const allCe = [];
   for (const el of root.querySelectorAll(CE_HOST_SELECTOR)) {
     if (isShrimptChromeTree(el)) continue;
-    if (el.closest(".shrimpt-envelope-wrapper")) continue;
+    if (el.closest("[data-shrimpt-compact]")) continue;
     const v = el.getAttribute("contenteditable");
     if (v !== "true" && v !== "" && v !== "plaintext-only") continue;
     allCe.push(el);
@@ -632,7 +642,7 @@ function syncFieldCandidateMarks() {
 
   for (const el of root.querySelectorAll("textarea, input")) {
     if (isShrimptChromeTree(el)) continue;
-    if (el.closest(".shrimpt-envelope-wrapper")) continue;
+    if (el.closest("[data-shrimpt-compact]")) continue;
     if (el.tagName === "TEXTAREA") {
       if (!el.disabled && !el.readOnly) next.add(el);
       continue;
@@ -734,20 +744,35 @@ async function getEnvelopeShadowCss() {
   return envelopeShadowCssCache;
 }
 
+let encryptTooltipShadowCssCache = null;
+
+async function getEncryptTooltipShadowCss() {
+  if (encryptTooltipShadowCssCache) return encryptTooltipShadowCssCache;
+  const url = chrome.runtime.getURL("src/content/encrypt-tooltip-shadow.css");
+  const res = await fetch(url);
+  if (!res.ok) throw new Error("Could not load encrypt tooltip styles.");
+  encryptTooltipShadowCssCache = await res.text();
+  return encryptTooltipShadowCssCache;
+}
+
 function applyShrimptBadgeVisual(badge, state) {
   const base = "shrimpt-envelope-button";
   badge.className = `${base} ${base}--${state}`;
 }
 
+/** Crypto / format failure (not LOCKED). Pre–dual-wrap envelopes only decrypt with the recipient’s keys. */
+const DECRYPT_FAILED_MESSAGE =
+  "Could not decrypt. Older Shrimpt messages were wrapped only for the recipient, so your own copy cannot be opened with your profile. New messages can be read by both sender and recipient. Unlock Shrimpt and confirm the active profile if keys should match.";
+
+function removeEnvelopeChipButton(badge) {
+  if (badge?.isConnected) badge.remove();
+}
+
 async function buildDecryptedNode(compactEnvelope) {
   const compact = normalizeCompactPayload(compactEnvelope);
-  const wrapper = document.createElement("span");
-  wrapper.className = "shrimpt-envelope-wrapper shrimpt-scanned-ciphertext";
-  wrapper.dataset.shrimptCompact = compact;
-
-  const shadowHost = document.createElement("span");
-  shadowHost.className = "shrimpt-envelope-shadow-host";
-  const shadow = shadowHost.attachShadow({ mode: "closed" });
+  const host = document.createElement("span");
+  host.dataset.shrimptCompact = compact;
+  const shadow = host.attachShadow({ mode: "closed" });
 
   const style = document.createElement("style");
   style.textContent = await getEnvelopeShadowCss();
@@ -768,14 +793,13 @@ async function buildDecryptedNode(compactEnvelope) {
   inner.appendChild(badge);
   inner.appendChild(reveal);
   shadow.appendChild(inner);
-  wrapper.appendChild(shadowHost);
 
   if (!settingsCache?.autoDecrypt) {
     shrimptLog("decrypt", "chip: autoDecrypt off — decrypt on chip click", { compactLen: compact.length });
     badge.addEventListener("click", async () => {
       await revealMessage(compact, reveal, badge, { forPageScan: false });
     });
-    return wrapper;
+    return host;
   }
 
   try {
@@ -796,7 +820,7 @@ async function buildDecryptedNode(compactEnvelope) {
       conversationMismatch: result?.conversationMismatch,
       plaintextLen: (result?.plaintext ?? "").length
     });
-    return wrapper;
+    return host;
   } catch (error) {
     const locked = error?.message === "LOCKED";
     shrimptLog("decrypt", "decrypt failed (auto)", { message: error?.message, locked });
@@ -805,12 +829,11 @@ async function buildDecryptedNode(compactEnvelope) {
       reveal.textContent = "Extension locked — open the Shrimpt popup and enter your unlock secret.";
       reveal.hidden = false;
     } else {
-      applyShrimptBadgeVisual(badge, "noKey");
-      reveal.textContent =
-        "Your active identity can’t open this Shrimpt message — it may be for someone else. Hover the chip for details.";
+      removeEnvelopeChipButton(badge);
+      reveal.textContent = DECRYPT_FAILED_MESSAGE;
       reveal.hidden = false;
     }
-    return wrapper;
+    return host;
   }
 }
 
@@ -821,18 +844,22 @@ function applyDecryptResultToUi(result, reveal, badge, options = {}) {
     reveal.textContent =
       "This message was not sent by the contact selected as Them in Shrimpt. Pick Anyone or the right person in the popup.";
     reveal.hidden = false;
-    applyShrimptBadgeVisual(badge, "wrongChat");
+    removeEnvelopeChipButton(badge);
     return false;
   }
   reveal.textContent = result.plaintext ?? "";
   reveal.dataset.verified = String(result.verified);
   if (result?.conversationMismatch) {
-    applyShrimptBadgeVisual(badge, "wrongChat");
+    removeEnvelopeChipButton(badge);
     reveal.title =
       "Sender does not match Them (Anyone or change Them in the dock/popup). Plaintext is shown so you can still read on the page.";
   } else {
     reveal.removeAttribute("title");
-    applyShrimptBadgeVisual(badge, result.verified ? "verified" : "open");
+    if (result.verified) {
+      removeEnvelopeChipButton(badge);
+    } else {
+      applyShrimptBadgeVisual(badge, "open");
+    }
   }
   reveal.hidden = keepPlaintextHidden;
   return true;
@@ -862,9 +889,8 @@ async function revealMessage(compactEnvelope, reveal, badge, options = {}) {
       applyShrimptBadgeVisual(badge, "pending");
       reveal.textContent = "Extension locked — open the Shrimpt popup and enter your unlock secret.";
     } else {
-      applyShrimptBadgeVisual(badge, "noKey");
-      reveal.textContent =
-        "Your active identity can’t open this Shrimpt message — it may be for someone else. Hover the chip for details.";
+      removeEnvelopeChipButton(badge);
+      reveal.textContent = DECRYPT_FAILED_MESSAGE;
     }
     reveal.hidden = false;
   }
@@ -876,7 +902,10 @@ let fieldBinding = null;
 let chromeDockHost = null;
 
 function getInputEncryptMode() {
-  return settingsCache?.inputEncryptMode || "off";
+  const m = settingsCache?.inputEncryptMode;
+  if (m === "live_overlay") return "live_overlay";
+  if (m === "button_replace") return "button_replace";
+  return "button_replace";
 }
 
 function isShrimptChromeTree(node) {
@@ -1374,11 +1403,7 @@ function syncFieldProtectionChrome() {
   if (fieldBinding && fieldBinding.mode !== mode) {
     detachFieldBinding();
   }
-  if (mode === "off") {
-    detachFieldBinding();
-  }
   ensureChromeDock();
-  updateChromeDockEncryptToggle();
   applyDockLayoutPosition();
   refreshChromeDockSelectors().catch(console.error);
 }
@@ -1421,7 +1446,6 @@ function ensureChromeDock() {
       button:hover { background: #343b4d; }
       button:disabled { opacity: 0.45; cursor: not-allowed; }
       button.primary { background: #175ddc; border-color: #175ddc; color: #fff; }
-      button.enc-on { background: #14532d; border-color: #22c55e; color: #ecfdf5; }
       .status { display: block; font-size: 11px; color: #8b98ad; margin-top: 8px; min-height: 1.2em; }
     </style>
     <div class="dock">
@@ -1430,10 +1454,6 @@ function ensureChromeDock() {
         <span class="drag-title">Shrimpt — page tools</span>
       </div>
       <div class="body">
-        <div class="row">
-          <label class="lbl" for="shrimpt-enc-t">Fields</label>
-          <button type="button" id="shrimpt-enc-t" data-a="enc-toggle" aria-pressed="false">Off</button>
-        </div>
         <div class="row">
           <label class="lbl" for="shrimpt-prof">You</label>
           <select class="sel" id="shrimpt-prof" data-a="profiles" aria-label="Decrypt as profile"></select>
@@ -1446,7 +1466,6 @@ function ensureChromeDock() {
       </div>
     </div>
   `;
-  shadow.querySelector('[data-a="enc-toggle"]').addEventListener("click", onDockEncryptToggle);
   shadow.querySelector('[data-a="profiles"]').addEventListener("change", onDockProfileChange);
   shadow.querySelector('[data-a="contacts"]').addEventListener("change", onDockContactChange);
   document.documentElement.appendChild(chromeDockHost);
@@ -1458,32 +1477,6 @@ function ensureChromeDock() {
 
 function getToolbarShadow() {
   return chromeDockHost?.shadowRoot || null;
-}
-
-async function onDockEncryptToggle() {
-  const cur = getInputEncryptMode();
-  try {
-    if (cur === "off") {
-      const next =
-        settingsCache.lastInputEncryptMode && settingsCache.lastInputEncryptMode !== "off"
-          ? settingsCache.lastInputEncryptMode
-          : "button_replace";
-      settingsCache = await request(MESSAGE_TYPES.UPDATE_SETTINGS, { inputEncryptMode: next });
-    } else {
-      settingsCache = await request(MESSAGE_TYPES.UPDATE_SETTINGS, {
-        lastInputEncryptMode: cur,
-        inputEncryptMode: "off"
-      });
-      detachFieldBinding();
-    }
-    syncFieldProtectionChrome();
-    if (getInputEncryptMode() !== "off") {
-      tryBindFocusedProtectableField();
-      scheduleFieldAutoBind();
-    }
-  } catch (e) {
-    setFieldToolbarStatus(e.message || String(e));
-  }
 }
 
 async function onDockProfileChange(ev) {
@@ -1506,16 +1499,6 @@ async function onDockContactChange(ev) {
   } catch (e) {
     setFieldToolbarStatus(e.message || String(e));
   }
-}
-
-function updateChromeDockEncryptToggle() {
-  const root = getToolbarShadow();
-  const btn = root?.querySelector('[data-a="enc-toggle"]');
-  if (!btn) return;
-  const on = getInputEncryptMode() !== "off";
-  btn.textContent = on ? "On" : "Off";
-  btn.classList.toggle("enc-on", on);
-  btn.setAttribute("aria-pressed", on ? "true" : "false");
 }
 
 async function refreshChromeDockSelectors() {
@@ -1572,8 +1555,6 @@ function scheduleFieldAutoBind(expectedField) {
 }
 
 function tryBindFocusedProtectableField(expectedField) {
-  if (getInputEncryptMode() === "off") return;
-
   let el = null;
   if (expectedField?.isConnected) {
     const ae = document.activeElement;
@@ -1591,12 +1572,11 @@ function tryBindFocusedProtectableField(expectedField) {
   }
   if (!el) return;
   if (fieldBinding?.target === el) return;
-  bindFieldEncryptToElement(el);
+  void bindFieldEncryptToElement(el).catch((err) => console.error("[Shrimpt] bind field encrypt", err));
 }
 
-function bindFieldEncryptToElement(el) {
+async function bindFieldEncryptToElement(el) {
   const mode = getInputEncryptMode();
-  if (mode === "off") return;
   if (!el) {
     setFieldToolbarStatus("Focus a text field or contenteditable region.");
     return;
@@ -1604,9 +1584,9 @@ function bindFieldEncryptToElement(el) {
   detachFieldBinding();
   const fk = fieldKind(el);
   if (mode === "live_overlay") {
-    startLiveFieldBinding(el, fk);
-  } else if (mode === "button_replace") {
-    startButtonReplaceBinding(el, fk);
+    await startLiveFieldBinding(el, fk);
+  } else {
+    await startButtonReplaceBinding(el, fk);
   }
   setFieldToolbarStatus(
     mode === "live_overlay"
@@ -1621,7 +1601,6 @@ function startFieldEncryptFocusCapture() {
   document.addEventListener(
     "focusin",
     (ev) => {
-      if (getInputEncryptMode() === "off") return;
       const t = ev.target;
       if (!t || t.nodeType !== Node.ELEMENT_NODE) return;
       if (isShrimptChromeTree(t)) return;
@@ -1658,47 +1637,22 @@ function positionEncryptTooltip(host, el) {
   host.style.top = `${top}px`;
 }
 
-function createEncryptTooltipHost(targetEl, onEncryptClick) {
+async function createEncryptTooltipHost(targetEl, onEncryptClick) {
   const host = document.createElement("div");
   host.className = "shrimpt-field-encrypt-tooltip-host";
   host.setAttribute("data-shrimpt-chrome", "1");
   host.style.cssText =
     "position:fixed;left:0;top:0;z-index:2147483647;margin:0;padding:0;border:none;background:transparent;pointer-events:auto;box-sizing:border-box;display:block;visibility:visible;opacity:1;";
   const shadow = host.attachShadow({ mode: "open" });
-  shadow.innerHTML = `
-    <style>
-      :host {
-        display: inline-block;
-        vertical-align: top;
-        line-height: normal;
-      }
-      button.tip {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        margin: 0;
-        padding: 7px 14px;
-        border-radius: 8px;
-        border: 1px solid #60a5fa;
-        background: linear-gradient(180deg, #2563eb 0%, #1d4ed8 100%);
-        color: #f8fafc;
-        font: 600 12px system-ui, -apple-system, sans-serif;
-        cursor: pointer;
-        white-space: nowrap;
-        user-select: none;
-        box-shadow: 0 4px 14px rgba(15, 23, 42, 0.35);
-      }
-      button.tip:hover:not(:disabled) {
-        filter: brightness(1.07);
-      }
-      button.tip:disabled {
-        opacity: 0.55;
-        cursor: not-allowed;
-      }
-    </style>
-    <button type="button" class="tip" data-a="encrypt-tip">Click to encrypt</button>
-  `;
-  const encryptTipBtn = shadow.querySelector('[data-a="encrypt-tip"]');
+  const style = document.createElement("style");
+  style.textContent = await getEncryptTooltipShadowCss();
+  shadow.appendChild(style);
+  const encryptTipBtn = document.createElement("button");
+  encryptTipBtn.type = "button";
+  encryptTipBtn.className = "tip";
+  encryptTipBtn.setAttribute("data-a", "encrypt-tip");
+  encryptTipBtn.textContent = "Click to encrypt";
+  shadow.appendChild(encryptTipBtn);
   const keepEditorSelection = (e) => {
     e.preventDefault();
   };
@@ -1785,9 +1739,9 @@ async function onLiveEncryptTooltipClick() {
   }
 }
 
-function startButtonReplaceBinding(el, fk) {
+async function startButtonReplaceBinding(el, fk) {
   const kind = fk || fieldKind(el);
-  const encryptTooltipHost = createEncryptTooltipHost(el, () => onFieldToolbarEncryptNow());
+  const encryptTooltipHost = await createEncryptTooltipHost(el, () => onFieldToolbarEncryptNow());
 
   const reposition = () => {
     if (!el.isConnected) return;
@@ -1819,7 +1773,7 @@ function startButtonReplaceBinding(el, fk) {
   };
 }
 
-function startLiveFieldBinding(el, fk) {
+async function startLiveFieldBinding(el, fk) {
   const kind = fk || fieldKind(el);
   const priorStyleAttr = el.getAttribute("style");
   const priorTabindex = el.hasAttribute("tabindex") ? el.getAttribute("tabindex") : null;
@@ -1877,7 +1831,7 @@ function startLiveFieldBinding(el, fk) {
 
   document.documentElement.appendChild(overlayHost);
 
-  const encryptTooltipHost = createEncryptTooltipHost(el, () => onLiveEncryptTooltipClick());
+  const encryptTooltipHost = await createEncryptTooltipHost(el, () => onLiveEncryptTooltipClick());
 
   const reposition = () => {
     if (!el.isConnected) return;

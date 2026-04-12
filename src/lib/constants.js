@@ -19,10 +19,9 @@ export const DEFAULT_SETTINGS = {
   /** Contact row id from keyring; limits page scan/decrypt to ciphertext from that contact's profileId */
   selectedRecipientContactId: null,
   /**
-   * Page form fields: off | live_overlay (plaintext in overlay, ciphertext on tooltip click) | button_replace (tooltip click).
+   * Page form fields: live_overlay | button_replace (field tools always active; mode chosen in popup).
    */
-  inputEncryptMode: "off",
-  /** Restored when page overlay turns field encryption back on. */
+  inputEncryptMode: "button_replace",
   lastInputEncryptMode: "button_replace",
   /** Saved pixel positions for draggable page overlays (null = use default corner). */
   uwuDockLeft: null,

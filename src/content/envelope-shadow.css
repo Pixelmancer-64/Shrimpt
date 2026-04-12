@@ -14,7 +14,7 @@
   vertical-align: baseline;
 }
 
-/* Base chip — state is set via .shrimpt-envelope-button--{pending|open|…} in JS */
+/* Chip — pending (decrypt / locked) and open (unverified); other states drop the button */
 .shrimpt-envelope-button {
   appearance: none;
   -webkit-appearance: none;
@@ -54,36 +54,13 @@
   filter: brightness(1.08);
 }
 
-.shrimpt-envelope-button--verified {
-  background: linear-gradient(180deg, #14532d 0%, #052e16 100%);
-  border-color: #4ade80;
-  color: #f0fdf4;
-  box-shadow: 0 0 0 1px rgba(74, 222, 128, 0.35);
-}
-
-.shrimpt-envelope-button--verified:hover {
-  filter: brightness(1.06);
-}
-
-.shrimpt-envelope-button--noKey,
 .shrimpt-envelope-button--unreadable {
   background: linear-gradient(180deg, #9a3412 0%, #7c2d12 100%);
   border-color: #fb923c;
   color: #fff7ed;
 }
 
-.shrimpt-envelope-button--noKey:hover,
 .shrimpt-envelope-button--unreadable:hover {
-  filter: brightness(1.06);
-}
-
-.shrimpt-envelope-button--wrongChat {
-  background: linear-gradient(180deg, #854d0e 0%, #713f12 100%);
-  border-color: #eab308;
-  color: #fefce8;
-}
-
-.shrimpt-envelope-button--wrongChat:hover {
   filter: brightness(1.06);
 }
 
@@ -92,7 +69,6 @@
   outline-offset: 2px;
 }
 
-.shrimpt-envelope-button--noKey:focus-visible,
 .shrimpt-envelope-button--unreadable:focus-visible {
   outline-color: #fdba74;
 }

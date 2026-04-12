@@ -434,7 +434,7 @@
             </label>
             <label class="check-row">
               <input id="showScanReadIndicators" type="checkbox" />
-              <span>On pages, highlight text regions the scanner reads (floating Shrimpt panel can toggle this too)</span>
+              <span>On pages, show scanner highlights and yellow tint on text fields (floating Shrimpt panel can toggle this too)</span>
             </label>
             <div class="field-group field-group-tight">
               <label class="label" for="observerDebounceMs">Scan debounce (ms)</label>
@@ -458,12 +458,11 @@
                 </span>
                 <span class="title-text">Encrypt from fields</span>
               </h2>
-              <p class="section-card-hint">Dock + tooltip on focused inputs. <strong>Esc</strong> clears focus binding. Uses <strong>Them</strong>.</p>
+              <p class="section-card-hint">Page dock + tooltip on focused inputs (always on). <strong>Esc</strong> clears focus binding. Uses <strong>Them</strong>.</p>
             </div>
             <div class="field-group field-group-tight">
               <label class="label" for="inputEncryptMode">Mode</label>
               <select id="inputEncryptMode" class="input">
-                <option value="off">Off</option>
                 <option value="live_overlay">Overlay — type in overlay, paste into field</option>
                 <option value="button_replace">In place — type in field, replace via button</option>
               </select>

@@ -56,6 +56,7 @@ export async function handleEncryptText({ plaintext, recipientContactId }) {
   return encryptTextForRecipient({
     plaintext,
     recipientEncryptionPublicJwk: recipient.encryptionPublicJwk,
+    senderEncryptionPublicJwk: sender.encryptionPublicJwk,
     senderSigningPrivateJwk: sender.signingPrivateJwk,
     senderProfileId: sender.id
   });

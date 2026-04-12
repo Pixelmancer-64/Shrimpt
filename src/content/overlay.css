@@ -17,29 +17,19 @@
 }
 
 /**
- * Inline ciphertext chip: flows with text (no flex “row” that widens like a block).
- * Colors are fixed (not inherited) so contrast holds on dark/light host pages.
+ * Closed-shadow ciphertext chip: single light-DOM node ([data-shrimpt-compact] only).
+ * Chip visuals live inside the shadow tree.
  */
-.shrimpt-envelope-wrapper {
+[data-shrimpt-compact] {
   display: inline;
   vertical-align: baseline;
   margin: 0 0.08em;
   line-height: inherit;
   font-size: inherit;
   max-width: 100%;
-}
-
-.shrimpt-scanned-ciphertext {
-  /* Keep outer wrapper visually neutral — chip styling is inside closed shadow */
   box-shadow: none;
   padding: 0;
   border-radius: 0;
-}
-
-/* Light-DOM host for closed shadow (chip UI lives in shadow; page JS cannot read inside) */
-.shrimpt-envelope-shadow-host {
-  display: inline;
-  vertical-align: baseline;
 }
 
 /* Page chrome host (position set inline; shadow lives inside) */

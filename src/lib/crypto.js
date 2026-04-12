@@ -2,8 +2,11 @@ import { arrayBufferToBase64, base64ToArrayBuffer, fromUtf8Bytes, sha256Hex, toU
 
 const RSA_OAEP_CIPHERTEXT_BYTES = 256;
 const RSA_PSS_SIGNATURE_BYTES = 256;
-/** 12-byte IV + RSA-2048 wrapped AES key */
-const ENVELOPE_PREFIX_BYTES = 12 + RSA_OAEP_CIPHERTEXT_BYTES;
+const IV_BYTES = 12;
+/** Legacy: IV + single RSA-OAEP wrapped AES key (recipient only). */
+const LEGACY_ENVELOPE_PREFIX_BYTES = IV_BYTES + RSA_OAEP_CIPHERTEXT_BYTES;
+/** Current: IV + RSA wrap for recipient + RSA wrap for sender (so senders can read their own ciphertext). */
+const DUAL_ENVELOPE_PREFIX_BYTES = IV_BYTES + 2 * RSA_OAEP_CIPHERTEXT_BYTES;
 
 const RSA_ENCRYPTION_ALGO = {
   name: "RSA-OAEP",
@@ -103,11 +106,18 @@ export async function importRsaPrivateSigningKey(jwk) {
 /**
  * Hybrid encrypt + sign. Single binary blob, Base64 once.
  * Sender identity only inside AES-GCM plaintext as JSON {"i":profileId,"t":message}.
+ * AES key is RSA-wrapped for the recipient and for the sender so both can decrypt later.
  */
-export async function encryptTextForRecipient({ plaintext, recipientEncryptionPublicJwk, senderSigningPrivateJwk, senderProfileId }) {
+export async function encryptTextForRecipient({
+  plaintext,
+  recipientEncryptionPublicJwk,
+  senderEncryptionPublicJwk,
+  senderSigningPrivateJwk,
+  senderProfileId
+}) {
   const inner = JSON.stringify({ i: senderProfileId, t: plaintext });
   const aesKey = await crypto.subtle.generateKey(AES_ALGO, true, ["encrypt", "decrypt"]);
-  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const iv = crypto.getRandomValues(new Uint8Array(IV_BYTES));
 
   const ciphertext = await crypto.subtle.encrypt(
     { name: "AES-GCM", iv },
@@ -117,21 +127,28 @@ export async function encryptTextForRecipient({ plaintext, recipientEncryptionPu
 
   const rawAesKey = await crypto.subtle.exportKey("raw", aesKey);
   const recipientPublicKey = await importRsaPublicEncryptionKey(recipientEncryptionPublicJwk);
-  const wrappedKey = await crypto.subtle.encrypt(
+  const senderPublicKey = await importRsaPublicEncryptionKey(senderEncryptionPublicJwk);
+
+  const wrappedForRecipient = await crypto.subtle.encrypt(
     { name: "RSA-OAEP" },
     recipientPublicKey,
     rawAesKey
   );
+  const wrappedForSender = await crypto.subtle.encrypt({ name: "RSA-OAEP" }, senderPublicKey, rawAesKey);
 
-  if (wrappedKey.byteLength !== RSA_OAEP_CIPHERTEXT_BYTES) {
+  if (
+    wrappedForRecipient.byteLength !== RSA_OAEP_CIPHERTEXT_BYTES ||
+    wrappedForSender.byteLength !== RSA_OAEP_CIPHERTEXT_BYTES
+  ) {
     throw new Error("Unexpected RSA-OAEP ciphertext length.");
   }
 
-  const signedLen = ENVELOPE_PREFIX_BYTES + ciphertext.byteLength;
+  const signedLen = DUAL_ENVELOPE_PREFIX_BYTES + ciphertext.byteLength;
   const signedPart = new Uint8Array(signedLen);
   signedPart.set(iv, 0);
-  signedPart.set(new Uint8Array(wrappedKey), 12);
-  signedPart.set(new Uint8Array(ciphertext), ENVELOPE_PREFIX_BYTES);
+  signedPart.set(new Uint8Array(wrappedForRecipient), IV_BYTES);
+  signedPart.set(new Uint8Array(wrappedForSender), IV_BYTES + RSA_OAEP_CIPHERTEXT_BYTES);
+  signedPart.set(new Uint8Array(ciphertext), DUAL_ENVELOPE_PREFIX_BYTES);
 
   const signingPrivateKey = await importRsaPrivateSigningKey(senderSigningPrivateJwk);
   const signature = await crypto.subtle.sign(
@@ -154,17 +171,43 @@ export async function encryptTextForRecipient({ plaintext, recipientEncryptionPu
 export function parseCompactEnvelope(base64Envelope) {
   const raw = base64ToArrayBuffer(base64Envelope);
   const view = new Uint8Array(raw);
-  const minLen = ENVELOPE_PREFIX_BYTES + 16 + RSA_PSS_SIGNATURE_BYTES;
-  if (view.length < minLen) {
+  const minLegacy = LEGACY_ENVELOPE_PREFIX_BYTES + 16 + RSA_PSS_SIGNATURE_BYTES;
+  if (view.length < minLegacy) {
     throw new Error("Empty or truncated envelope.");
   }
   return raw;
 }
 
+async function tryRsaUnwrap(view, byteStart, byteEnd, privateKey) {
+  try {
+    return await crypto.subtle.decrypt(
+      { name: "RSA-OAEP" },
+      privateKey,
+      view.subarray(byteStart, byteEnd)
+    );
+  } catch {
+    return null;
+  }
+}
+
+function parseValidatedInner(plaintextBuffer) {
+  const innerText = fromUtf8Bytes(new Uint8Array(plaintextBuffer));
+  let inner;
+  try {
+    inner = JSON.parse(innerText);
+  } catch {
+    return null;
+  }
+  if (!inner || typeof inner.i !== "string" || typeof inner.t !== "string") {
+    return null;
+  }
+  return inner;
+}
+
 async function decryptEnvelopeBuffer(buffer, recipientEncryptionPrivateJwk, signingPublicKeyResolver) {
   const view = new Uint8Array(buffer);
-  const minLen = ENVELOPE_PREFIX_BYTES + 16 + RSA_PSS_SIGNATURE_BYTES;
-  if (view.length < minLen) {
+  const minLegacy = LEGACY_ENVELOPE_PREFIX_BYTES + 16 + RSA_PSS_SIGNATURE_BYTES;
+  if (view.length < minLegacy) {
     throw new Error("Truncated envelope.");
   }
 
@@ -172,45 +215,54 @@ async function decryptEnvelopeBuffer(buffer, recipientEncryptionPrivateJwk, sign
   const signedPart = view.subarray(0, sigStart);
   const signature = view.subarray(sigStart);
 
-  const iv = view.subarray(0, 12);
-  const wrappedKey = view.subarray(12, ENVELOPE_PREFIX_BYTES);
-  const ciphertext = view.subarray(ENVELOPE_PREFIX_BYTES, sigStart);
-
+  const iv = view.subarray(0, IV_BYTES);
   const privateKey = await importRsaPrivateEncryptionKey(recipientEncryptionPrivateJwk);
 
-  const rawAesKey = await crypto.subtle.decrypt(
-    { name: "RSA-OAEP" },
-    privateKey,
-    wrappedKey
-  );
+  const decryptAes = async (rawAesKey, ctStart, ctEnd) => {
+    const aesKey = await crypto.subtle.importKey(
+      "raw",
+      rawAesKey,
+      { name: "AES-GCM", length: 256 },
+      false,
+      ["decrypt"]
+    );
+    return crypto.subtle.decrypt(
+      { name: "AES-GCM", iv: new Uint8Array(iv) },
+      aesKey,
+      view.subarray(ctStart, ctEnd)
+    );
+  };
 
-  const aesKey = await crypto.subtle.importKey(
-    "raw",
-    rawAesKey,
-    { name: "AES-GCM", length: 256 },
-    false,
-    ["decrypt"]
-  );
+  const dualMinCt = 16;
+  const hasDualLayout = sigStart >= DUAL_ENVELOPE_PREFIX_BYTES + dualMinCt;
 
-  const plaintextBuffer = await crypto.subtle.decrypt(
-    {
-      name: "AES-GCM",
-      iv: new Uint8Array(iv)
-    },
-    aesKey,
-    ciphertext
-  );
+  const tryDecryptAt = async (rawAesKey, aesCtStart) => {
+    if (!rawAesKey || sigStart < aesCtStart + dualMinCt) return null;
+    try {
+      const plaintextBuffer = await decryptAes(rawAesKey, aesCtStart, sigStart);
+      const inner = parseValidatedInner(plaintextBuffer);
+      if (!inner) return null;
+      return { plaintextBuffer, inner };
+    } catch {
+      return null;
+    }
+  };
 
-  const innerText = fromUtf8Bytes(new Uint8Array(plaintextBuffer));
-  let inner;
-  try {
-    inner = JSON.parse(innerText);
-  } catch {
-    throw new Error("Invalid inner payload.");
+  const rawFirst = await tryRsaUnwrap(view, IV_BYTES, LEGACY_ENVELOPE_PREFIX_BYTES, privateKey);
+  const rawSecond = hasDualLayout
+    ? await tryRsaUnwrap(view, LEGACY_ENVELOPE_PREFIX_BYTES, DUAL_ENVELOPE_PREFIX_BYTES, privateKey)
+    : null;
+
+  let found =
+    (await tryDecryptAt(rawFirst, LEGACY_ENVELOPE_PREFIX_BYTES)) ||
+    (hasDualLayout ? await tryDecryptAt(rawFirst, DUAL_ENVELOPE_PREFIX_BYTES) : null) ||
+    (hasDualLayout ? await tryDecryptAt(rawSecond, DUAL_ENVELOPE_PREFIX_BYTES) : null);
+
+  if (!found) {
+    throw new Error("Cannot decrypt envelope.");
   }
-  if (!inner || typeof inner.i !== "string" || typeof inner.t !== "string") {
-    throw new Error("Invalid inner payload shape.");
-  }
+
+  const { inner } = found;
 
   const senderSigningPublicJwk = signingPublicKeyResolver(inner.i);
   let verified = false;

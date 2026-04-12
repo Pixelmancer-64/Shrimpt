@@ -1,0 +1,71 @@
+/**
+ * Closed shadow styles for the page “Click to encrypt” tooltip.
+ * Design tokens mirror src/popup/popup.css (:root light + dark).
+ */
+:host {
+  display: inline-block;
+  vertical-align: top;
+  line-height: normal;
+
+  --shrimp-pink-50: #f7e9ea;
+  --shrimp-pink-100: #e8c2c6;
+  --shrimp-pink-500: #d1939a;
+  --shrimp-pink-700: #a36b71;
+
+  --bw-accent: var(--shrimp-pink-500);
+  --bw-accent-hover: var(--shrimp-pink-700);
+  --btn-primary-fg: #ffffff;
+  --bw-focus: color-mix(in srgb, var(--shrimp-pink-500) 38%, transparent);
+  --radius: 8px;
+  --font-ui: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :host {
+    --shrimp-pink-900: #4a2f32;
+    --shrimp-pink-100: #e8c2c6;
+    --shrimp-pink-500: #d1939a;
+
+    --bw-accent: var(--shrimp-pink-500);
+    --bw-accent-hover: var(--shrimp-pink-100);
+    --btn-primary-fg: #ffffff;
+    --bw-focus: color-mix(in srgb, var(--shrimp-pink-500) 45%, transparent);
+  }
+}
+
+button.tip {
+  appearance: none;
+  -webkit-appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  margin: 0;
+  padding: 7px 14px;
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.35;
+  border-radius: var(--radius);
+  border: 1px solid transparent;
+  background: var(--bw-accent);
+  color: var(--btn-primary-fg);
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+  transition: background 0.15s ease, opacity 0.15s ease;
+}
+
+button.tip:hover:not(:disabled) {
+  background: var(--bw-accent-hover);
+}
+
+button.tip:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--bw-focus);
+}
+
+button.tip:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}

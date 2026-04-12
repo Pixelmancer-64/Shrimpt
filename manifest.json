@@ -29,7 +29,7 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["src/content/envelope-shadow.css"],
+      "resources": ["src/content/envelope-shadow.css", "src/content/encrypt-tooltip-shadow.css"],
       "matches": ["<all_urls>"]
     }
   ],
