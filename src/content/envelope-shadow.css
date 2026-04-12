@@ -1,19 +1,21 @@
 /**
- * Scoped inside closed Shadow DOM for UWU inline chips.
+ * Scoped inside closed Shadow DOM for Shrimpt inline chips.
  * Page scripts cannot read nodes inside this tree.
  */
 :host {
   display: inline;
   vertical-align: baseline;
+  /* Pull page text color through the shadow host so plaintext matches surrounding copy */
+  color: inherit;
 }
 
-.uwu-envelope-inner {
+.shrimpt-envelope-inner {
   display: inline;
   vertical-align: baseline;
 }
 
-/* Base chip — state is set via .uwu-envelope-button--{pending|open|…} in JS */
-.uwu-envelope-button {
+/* Base chip — state is set via .shrimpt-envelope-button--{pending|open|…} in JS */
+.shrimpt-envelope-button {
   appearance: none;
   -webkit-appearance: none;
   display: inline-block;
@@ -32,102 +34,92 @@
   transition: filter 0.12s ease, box-shadow 0.12s ease;
 }
 
-.uwu-envelope-button--pending {
+.shrimpt-envelope-button--pending {
   background: linear-gradient(180deg, #1e4a7a 0%, #0f2f5c 100%);
   border-color: #3b82f6;
   color: #e8f4ff;
 }
 
-.uwu-envelope-button--pending:hover {
+.shrimpt-envelope-button--pending:hover {
   filter: brightness(1.08);
 }
 
-.uwu-envelope-button--open {
+.shrimpt-envelope-button--open {
   background: linear-gradient(180deg, #166534 0%, #0d3d22 100%);
   border-color: #22c55e;
   color: #ecfdf5;
 }
 
-.uwu-envelope-button--open:hover {
+.shrimpt-envelope-button--open:hover {
   filter: brightness(1.08);
 }
 
-.uwu-envelope-button--verified {
+.shrimpt-envelope-button--verified {
   background: linear-gradient(180deg, #14532d 0%, #052e16 100%);
   border-color: #4ade80;
   color: #f0fdf4;
   box-shadow: 0 0 0 1px rgba(74, 222, 128, 0.35);
 }
 
-.uwu-envelope-button--verified:hover {
+.shrimpt-envelope-button--verified:hover {
   filter: brightness(1.06);
 }
 
-.uwu-envelope-button--locked {
-  background: linear-gradient(180deg, #5b21b6 0%, #3b0764 100%);
-  border-color: #a78bfa;
-  color: #f5f3ff;
-}
-
-.uwu-envelope-button--locked:hover {
-  filter: brightness(1.08);
-}
-
-.uwu-envelope-button--noKey,
-.uwu-envelope-button--unreadable {
+.shrimpt-envelope-button--noKey,
+.shrimpt-envelope-button--unreadable {
   background: linear-gradient(180deg, #9a3412 0%, #7c2d12 100%);
   border-color: #fb923c;
   color: #fff7ed;
 }
 
-.uwu-envelope-button--noKey:hover,
-.uwu-envelope-button--unreadable:hover {
+.shrimpt-envelope-button--noKey:hover,
+.shrimpt-envelope-button--unreadable:hover {
   filter: brightness(1.06);
 }
 
-.uwu-envelope-button--wrongChat {
+.shrimpt-envelope-button--wrongChat {
   background: linear-gradient(180deg, #854d0e 0%, #713f12 100%);
   border-color: #eab308;
   color: #fefce8;
 }
 
-.uwu-envelope-button--wrongChat:hover {
+.shrimpt-envelope-button--wrongChat:hover {
   filter: brightness(1.06);
 }
 
-.uwu-envelope-button:focus-visible {
+.shrimpt-envelope-button:focus-visible {
   outline: 2px solid #38bdf8;
   outline-offset: 2px;
 }
 
-.uwu-envelope-button--noKey:focus-visible,
-.uwu-envelope-button--unreadable:focus-visible {
+.shrimpt-envelope-button--noKey:focus-visible,
+.shrimpt-envelope-button--unreadable:focus-visible {
   outline-color: #fdba74;
 }
 
-.uwu-envelope-reveal {
-  display: inline-block;
+.shrimpt-envelope-reveal {
+  display: inline;
   vertical-align: baseline;
   margin-left: 0.28em;
-  border: 1px solid #475569;
-  background: #f8fafc;
-  color: #0f172a;
-  border-radius: 6px;
-  padding: 0.2em 0.5em;
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  box-shadow: none;
   white-space: pre-wrap;
   max-width: min(100%, 42em);
-  font-size: max(0.88em, 12px);
-  line-height: 1.45;
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: inherit;
+  line-height: inherit;
+  font-family: inherit;
 }
 
-.uwu-envelope-reveal[data-verified="true"] {
-  border-color: #166534;
-  background: #ecfdf5;
-  color: #052e16;
+.shrimpt-envelope-reveal[data-verified="true"] {
+  border: none;
+  background: transparent;
+  color: inherit;
 }
 
-.uwu-envelope-reveal[hidden] {
+.shrimpt-envelope-reveal[hidden] {
   display: none !important;
 }

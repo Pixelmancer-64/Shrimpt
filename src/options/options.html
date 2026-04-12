@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>UWU Overlay Settings</title>
+    <title>Shrimpt — Settings</title>
     <style>
       body {
         font-family: system-ui, sans-serif;
@@ -50,7 +50,7 @@
     </style>
   </head>
   <body>
-    <h1>UWU Overlay Settings</h1>
+    <h1>Shrimpt — Settings</h1>
 
     <div id="pin-gate" class="pin-gate" hidden>
       <h2 id="pin-gate-title">Unlock</h2>
@@ -76,9 +76,16 @@
         Auto decrypt detected messages
       </label>
       <br />
+      <span id="clickToRevealRow">
+        <label>
+          <input id="clickToReveal" type="checkbox" />
+          On pages, hide decrypted text until chip click
+        </label>
+        <br />
+      </span>
       <label>
-        <input id="clickToReveal" type="checkbox" />
-        Keep messages hidden until clicked
+        <input id="showScanReadIndicators" type="checkbox" />
+        Highlight text regions the page scanner reads (blue/red tints)
       </label>
       <br />
       <label>

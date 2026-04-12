@@ -65,7 +65,7 @@ export async function encryptPayloadWithPassphrase(plaintextUtf8, passphrase, mi
  */
 export async function decryptPayloadWithPassphrase(wrap, passphrase) {
   if (!isEncryptedPayload(wrap)) {
-    throw new Error("Not an encrypted UWU payload.");
+    throw new Error("Not an encrypted Shrimpt payload.");
   }
   const pass = String(passphrase ?? "");
   if (!pass.length || pass.length > MAX_PASSPHRASE_LENGTH) {

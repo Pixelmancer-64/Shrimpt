@@ -61,7 +61,8 @@ export async function handleEncryptText({ plaintext, recipientContactId }) {
   });
 }
 
-export async function handleDecryptEnvelope({ compactEnvelope }) {
+export async function handleDecryptEnvelope(payload = {}) {
+  const { compactEnvelope, forPageScan } = payload;
   await requireUnlock();
   const keyring = await getKeyring();
   const activeProfileId = await getActiveProfileId();
@@ -83,11 +84,13 @@ export async function handleDecryptEnvelope({ compactEnvelope }) {
     signingPublicKeyResolver
   });
 
-  if (
+  const conversationMismatch = Boolean(
     clientSettings.expectedSenderProfileId &&
-    result.senderProfileId &&
-    result.senderProfileId !== clientSettings.expectedSenderProfileId
-  ) {
+      result.senderProfileId &&
+      result.senderProfileId !== clientSettings.expectedSenderProfileId
+  );
+
+  if (conversationMismatch && !forPageScan) {
     return {
       skipped: true,
       code: "WRONG_CONVERSATION",
@@ -102,7 +105,8 @@ export async function handleDecryptEnvelope({ compactEnvelope }) {
     verified: result.verified,
     senderProfileId: result.senderProfileId,
     senderKnown: Boolean(senderContact),
-    senderName: senderContact?.name || null
+    senderName: senderContact?.name || null,
+    conversationMismatch: conversationMismatch && Boolean(forPageScan)
   };
 }
 

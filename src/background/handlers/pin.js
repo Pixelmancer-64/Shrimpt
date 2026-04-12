@@ -10,6 +10,7 @@ import {
   setSessionUnlocked,
   verifySecretAgainstStored
 } from "../../lib/pin.js";
+import { broadcastSessionUnlockedToTabs } from "../broadcast-session.js";
 
 export async function handleUnlockStatus() {
   return getUnlockStatus();
@@ -33,6 +34,7 @@ export async function handleSetPin({ pin, pinConfirm }) {
   const record = await hashSecretForStorage(pin);
   await savePinRecord(record);
   await setSessionUnlocked();
+  await broadcastSessionUnlockedToTabs();
   return { ok: true };
 }
 
@@ -46,5 +48,6 @@ export async function handleUnlockPin({ pin }) {
     throw new Error("Wrong secret.");
   }
   await setSessionUnlocked();
+  await broadcastSessionUnlockedToTabs();
   return { ok: true };
 }

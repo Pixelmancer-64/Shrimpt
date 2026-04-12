@@ -24,6 +24,7 @@ import {
   setActiveProfileId,
   setLocal
 } from "../../lib/storage.js";
+import { broadcastSessionUnlockedToTabs } from "../broadcast-session.js";
 import { requireUnlock } from "../require-unlock.js";
 import { handleImportContact } from "./keyring.js";
 
@@ -31,6 +32,7 @@ async function buildPlainBackupObject() {
   const keyring = await getKeyring();
   return {
     uwuBackupVersion: 1,
+    shrimptBackupVersion: 1,
     exportedAt: new Date().toISOString(),
     keyring,
     activeProfileId: await getActiveProfileId(),
@@ -92,6 +94,7 @@ export async function handleImportFullBackup({ rawText, passphrase, confirmToken
   if (pinRecord?.hashB64 && pinRecord?.saltB64) {
     await savePinRecord(pinRecord);
     await setSessionUnlocked();
+    await broadcastSessionUnlockedToTabs();
   } else {
     await removeLocal(STORAGE_KEYS.PIN_RECORD);
     await clearSessionUnlocked();

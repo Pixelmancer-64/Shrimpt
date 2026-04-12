@@ -33,6 +33,8 @@ const els = {
   copyExportBtn: document.getElementById("copyExportBtn"),
   autoDecrypt: document.getElementById("autoDecrypt"),
   clickToReveal: document.getElementById("clickToReveal"),
+  clickToRevealRow: document.getElementById("clickToRevealRow"),
+  showScanReadIndicators: document.getElementById("showScanReadIndicators"),
   observerDebounceMs: document.getElementById("observerDebounceMs"),
   settingsStatus: document.getElementById("settingsStatus"),
   inputEncryptMode: document.getElementById("inputEncryptMode"),
@@ -261,7 +263,7 @@ function showPinCreate() {
   document.getElementById("pin-unlock-fields").hidden = true;
   document.getElementById("pin-gate-title").textContent = "Welcome";
   document.getElementById("pin-gate-desc").textContent =
-    "This passphrase unlocks UWU and protects your keys on this device. It never leaves your browser.";
+    "This passphrase unlocks Shrimpt and protects your keys on this device. It never leaves your browser.";
   document.getElementById("pinCreatePin").value = "";
   document.getElementById("pinCreateConfirm").value = "";
   updatePinCreateValidation();
@@ -273,7 +275,7 @@ function showPinUnlock() {
   mainShell.hidden = true;
   document.getElementById("pin-create-fields").hidden = true;
   document.getElementById("pin-unlock-fields").hidden = false;
-  document.getElementById("pin-gate-title").textContent = "Unlock UWU";
+  document.getElementById("pin-gate-title").textContent = "Unlock Shrimpt";
   document.getElementById("pin-gate-desc").textContent =
     "Enter your passphrase to use your keys in this browser session. If you just restarted the browser, this is normal.";
   document.getElementById("pinUnlockInput")?.focus();
@@ -318,8 +320,12 @@ function bindEvents() {
   els.decryptBtn.addEventListener("click", onDecryptFromPopup);
   els.copyDecryptBtn.addEventListener("click", () => copyField(els.decryptOutput, els.decryptStatus));
   els.copyExportBtn.addEventListener("click", () => copyField(els.exportOutput, els.generateStatus));
-  els.autoDecrypt.addEventListener("change", () => persistSettings());
+  els.autoDecrypt.addEventListener("change", () => {
+    updateClickToRevealRowVisibility();
+    persistSettings();
+  });
   els.clickToReveal.addEventListener("change", () => persistSettings());
+  els.showScanReadIndicators?.addEventListener("change", () => persistSettings());
   els.inputEncryptMode?.addEventListener("change", () => persistSettings());
   els.observerDebounceMs.addEventListener("input", schedulePersistSettings);
   els.observerDebounceMs.addEventListener("change", () => persistSettings());
@@ -393,14 +399,23 @@ function updateContextBarHint(meName, recipientId, themName) {
   }
 }
 
+function updateClickToRevealRowVisibility() {
+  if (!els.clickToRevealRow || !els.autoDecrypt) return;
+  els.clickToRevealRow.hidden = els.autoDecrypt.checked;
+}
+
 async function loadSettingsUi() {
   const settings = await request(MESSAGE_TYPES.GET_SETTINGS);
   els.autoDecrypt.checked = Boolean(settings.autoDecrypt);
   els.clickToReveal.checked = Boolean(settings.clickToReveal);
+  if (els.showScanReadIndicators) {
+    els.showScanReadIndicators.checked = settings.showScanReadIndicators !== false;
+  }
   els.observerDebounceMs.value = settings.observerDebounceMs;
   if (els.inputEncryptMode) {
     els.inputEncryptMode.value = settings.inputEncryptMode || "off";
   }
+  updateClickToRevealRowVisibility();
 }
 
 function schedulePersistSettings() {
@@ -418,6 +433,7 @@ async function persistSettings() {
     const payload = {
       autoDecrypt: els.autoDecrypt.checked,
       clickToReveal: els.clickToReveal.checked,
+      showScanReadIndicators: els.showScanReadIndicators ? els.showScanReadIndicators.checked : true,
       observerDebounceMs: Number(els.observerDebounceMs.value) || 250,
       inputEncryptMode: mode
     };
@@ -718,7 +734,7 @@ function extractCompactPayload(text) {
   if (matches.length > 1) {
     return {
       payload: matches[0].payload,
-      note: "Multiple UWU blocks in the paste — only the first was decrypted."
+      note: "Multiple Shrimpt blocks in the paste — only the first was decrypted."
     };
   }
   if (matches.length === 1) {
@@ -811,7 +827,7 @@ async function onExportFullBackup() {
       passphraseConfirm
     });
     const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-    downloadJsonFile(`uwu-backup-${stamp}.json`, wrap);
+    downloadJsonFile(`shrimpt-backup-${stamp}.json`, wrap);
     if (els.backupStatus) {
       els.backupStatus.textContent = "Encrypted backup downloaded. Store the password separately.";
     }

@@ -11,7 +11,7 @@ export const MIN_SECRET_LENGTH = 12;
 export const MAX_SECRET_LENGTH = 256;
 
 /** Session flag; cleared when the browser session ends. */
-export const SESSION_UNLOCK_KEY = "uwuUnlocked";
+export const SESSION_UNLOCK_KEY = "shrimptUnlocked";
 
 /** Trim surrounding whitespace only; preserves spaces inside (passphrases). */
 export function normalizeSecret(secret) {

@@ -1,6 +1,6 @@
 /** Full local backup / restore (no backend). */
 
-export const UWU_BACKUP_VERSION = 1;
+export const SHRIMPT_BACKUP_VERSION = 1;
 
 /**
  * @param {unknown} backup
@@ -11,9 +11,9 @@ export function validateFullBackup(backup) {
     throw new Error("Invalid backup file.");
   }
   const o = /** @type {Record<string, unknown>} */ (backup);
-  const ver = o.uwuBackupVersion;
-  if (ver !== UWU_BACKUP_VERSION) {
-    throw new Error("This backup is from a different or unsupported UWU version.");
+  const ver = o.uwuBackupVersion ?? o.shrimptBackupVersion;
+  if (ver !== SHRIMPT_BACKUP_VERSION) {
+    throw new Error("This backup is from a different or unsupported Shrimpt version.");
   }
   const kr = o.keyring;
   if (!kr || typeof kr !== "object") {

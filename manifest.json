@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "UWU Cryptographic Overlay",
+  "name": "Shrimpt",
   "version": "0.1.0",
-  "description": "Inline encryption and decryption overlay for arbitrary web pages.",
+  "description": "Inline encryption and decryption (Shrimpt) for arbitrary web pages.",
   "permissions": [
     "storage",
     "activeTab"
@@ -15,7 +15,7 @@
     "type": "module"
   },
   "action": {
-    "default_title": "UWU Overlay",
+    "default_title": "Shrimpt",
     "default_popup": "./src/popup/popup.html"
   },
   "options_page": "./src/options/options.html",
@@ -25,6 +25,12 @@
       "js": ["./src/content/content-script.js"],
       "css": ["./src/content/overlay.css"],
       "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["src/content/envelope-shadow.css"],
+      "matches": ["<all_urls>"]
     }
   ],
   "icons": {

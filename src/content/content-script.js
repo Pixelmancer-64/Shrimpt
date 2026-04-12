@@ -1,5 +1,5 @@
 /**
- * Classic script (no import) — content scripts are not modules in all browsers.
+ * Shrimpt — page overlay (classic script; content scripts are not modules in all browsers).
  * Keep in sync with src/lib/constants.js and findEnvelopeMatches in src/lib/encoding.js.
  */
 const MARKER_PREFIX = "!uwu!";
@@ -10,9 +10,12 @@ const STORAGE_KEYS = {
   ACTIVE_PROFILE_ID: "activeProfileId"
 };
 
+/** Must match SESSION_UNLOCK_KEY in src/lib/pin.js */
+const SESSION_UNLOCK_KEY = "shrimptUnlocked";
+
 const DEFAULT_SETTINGS = {
   autoDecrypt: true,
-  clickToReveal: true,
+  clickToReveal: false,
   observerDebounceMs: 250,
   scanTextLimit: 120000,
   selectedRecipientContactId: null,
@@ -21,8 +24,12 @@ const DEFAULT_SETTINGS = {
   uwuDockLeft: null,
   uwuDockTop: null,
   uwuHudLeft: null,
-  uwuHudTop: null
+  uwuHudTop: null,
+  showScanReadIndicators: true
 };
+
+/** Must match MESSAGE_SESSION_UNLOCKED in src/lib/constants.js */
+const MESSAGE_SESSION_UNLOCKED = "SHRIMPT_SESSION_UNLOCKED";
 
 const MESSAGE_TYPES = {
   GET_SETTINGS: "GET_SETTINGS",
@@ -33,6 +40,25 @@ const MESSAGE_TYPES = {
   LIST_CONTACTS: "LIST_CONTACTS",
   SET_ACTIVE_PROFILE: "SET_ACTIVE_PROFILE"
 };
+
+/**
+ * Content-script debug logs (page DevTools console). Silence with:
+ *   window.__SHRIMPT_DEBUG__ = false
+ * (set before navigation, or run and reload the tab).
+ */
+function shrimptDebugEnabled() {
+  try {
+    if (typeof window !== "undefined" && window.__SHRIMPT_DEBUG__ === false) return false;
+  } catch (_e) {
+    /* cross-origin isolated or no window */
+  }
+  return true;
+}
+
+function shrimptLog(scope, ...args) {
+  if (!shrimptDebugEnabled()) return;
+  console.log(`[Shrimpt:${scope}]`, ...args);
+}
 
 function findEnvelopeMatches(text) {
   if (!text || typeof text !== "string") return [];
@@ -58,12 +84,18 @@ function findEnvelopeMatches(text) {
   return matches;
 }
 
+/** Strip whitespace / invisible chars editors insert so base64 decodes reliably. */
+function normalizeCompactPayload(raw) {
+  return String(raw ?? "").replace(/[\s\u00a0\u200b\uFEFF]+/g, "");
+}
+
 function wrapEnvelopeCompact(compact) {
   return MARKER_PREFIX + compact + MARKER_SUFFIX;
 }
 
-const SCAN_HIGHLIGHT_NAME = "uwu-scanned-text";
-const UWU_FIELD_CANDIDATE_CLASS = "uwu-field-candidate";
+const SCAN_HIGHLIGHT_NAME = "shrimpt-scanned-text";
+const FRAGMENT_HIGHLIGHT_NAME = "shrimpt-marker-fragment";
+const SHRIMPT_FIELD_CANDIDATE_CLASS = "shrimpt-field-candidate";
 const CE_HOST_SELECTOR =
   '[contenteditable="true"],[contenteditable=""],[contenteditable="plaintext-only"]';
 
@@ -71,6 +103,8 @@ const processedNodes = new WeakSet();
 let observer = null;
 let debounceTimer = null;
 let settingsCache = null;
+/** True if bootstrap fell back to DEFAULT_SETTINGS (retry when background is up). */
+let settingsFallback = false;
 let scanGeneration = 0;
 let hudRoot = null;
 let lastFieldCandidateEls = new Set();
@@ -80,18 +114,51 @@ let fieldAutoBindGen = 0;
 bootstrap().catch(console.error);
 
 async function bootstrap() {
-  settingsCache = await request(MESSAGE_TYPES.GET_SETTINGS);
-  chrome.storage.onChanged.addListener((changes, area) => {
-    if (area !== "local") return;
-    const profileChanged = Boolean(changes[STORAGE_KEYS.ACTIVE_PROFILE_ID]);
-    const settingsChanged = Boolean(changes[STORAGE_KEYS.SETTINGS]);
-    if (!profileChanged && !settingsChanged) return;
-    onIdentityOrConversationStorageChanged().catch(console.error);
+  try {
+    settingsCache = await request(MESSAGE_TYPES.GET_SETTINGS);
+    settingsFallback = false;
+  } catch (err) {
+    console.warn("[Shrimpt] GET_SETTINGS failed; using defaults until background is ready.", err);
+    settingsCache = { ...DEFAULT_SETTINGS };
+    settingsFallback = true;
+  }
+  shrimptLog("boot", "bootstrap", {
+    href: typeof location !== "undefined" ? location.href : "",
+    settingsFallback,
+    autoDecrypt: settingsCache?.autoDecrypt,
+    clickToReveal: settingsCache?.clickToReveal,
+    scanTextLimit: settingsCache?.scanTextLimit,
+    observerDebounceMs: settingsCache?.observerDebounceMs,
+    runtimeId: typeof chrome !== "undefined" && chrome.runtime?.id ? chrome.runtime.id : null
   });
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === "local") {
+      const profileChanged = Boolean(changes[STORAGE_KEYS.ACTIVE_PROFILE_ID]);
+      const settingsChanged = Boolean(changes[STORAGE_KEYS.SETTINGS]);
+      if (profileChanged || settingsChanged) {
+        onIdentityOrConversationStorageChanged().catch(console.error);
+      }
+    }
+    if (area === "session") {
+      const unlock = changes[SESSION_UNLOCK_KEY];
+      if (unlock?.newValue === true) {
+        refreshEnvelopesAfterSessionUnlock().catch(console.error);
+      }
+    }
+  });
+
+  chrome.runtime.onMessage.addListener((msg) => {
+    if (msg?.type === MESSAGE_SESSION_UNLOCKED) {
+      shrimptLog("boot", "session unlock message from background; refreshing envelopes");
+      refreshEnvelopesAfterSessionUnlock().catch(console.error);
+    }
+  });
+
   ensureScanHud();
   syncFieldProtectionChrome();
   await rescanPage();
   startObserver();
+  scheduleLateRescans();
   startFieldEncryptFocusCapture();
   if (getInputEncryptMode() !== "off") {
     scheduleFieldAutoBind();
@@ -106,7 +173,8 @@ async function onIdentityOrConversationStorageChanged() {
   if (getInputEncryptMode() !== "off") {
     scheduleFieldAutoBind();
   }
-  const wrappers = [...document.querySelectorAll(".uwu-envelope-wrapper[data-uwu-compact]")];
+  const wrappers = [...document.querySelectorAll(".shrimpt-envelope-wrapper[data-shrimpt-compact]")];
+  shrimptLog("boot", "identity/settings storage changed; rebuilding envelopes", { count: wrappers.length });
   for (const w of wrappers) {
     await rebuildEnvelopeWrapper(w);
   }
@@ -114,7 +182,7 @@ async function onIdentityOrConversationStorageChanged() {
 }
 
 async function rebuildEnvelopeWrapper(wrapper) {
-  const compact = wrapper.getAttribute("data-uwu-compact");
+  const compact = wrapper.getAttribute("data-shrimpt-compact");
   if (!compact) return;
   const parent = wrapper.parentNode;
   if (!parent) return;
@@ -122,13 +190,49 @@ async function rebuildEnvelopeWrapper(wrapper) {
   parent.replaceChild(fresh, wrapper);
 }
 
+/** After popup/options unlock, retry decrypt on chips that showed "Extension locked…". */
+async function refreshEnvelopesAfterSessionUnlock() {
+  try {
+    settingsCache = await request(MESSAGE_TYPES.GET_SETTINGS);
+  } catch (_e) {
+    /* keep cached settings */
+  }
+  const wrappers = [...document.querySelectorAll(".shrimpt-envelope-wrapper[data-shrimpt-compact]")];
+  shrimptLog("boot", "session unlocked; rebuilding envelope chips", { count: wrappers.length });
+  for (const w of wrappers) {
+    if (!w.isConnected) continue;
+    await rebuildEnvelopeWrapper(w);
+  }
+  await rescanPage();
+}
+
 function startObserver() {
   observer = new MutationObserver(() => scheduleRescan());
 
   observer.observe(document.documentElement, {
     childList: true,
-    subtree: true
+    subtree: true,
+    characterData: true,
+    characterDataOldValue: false
   });
+}
+
+/** SPAs and lazy content often mount after the first idle scan. */
+function scheduleLateRescans() {
+  const run = () => rescanPage().catch(console.error);
+  setTimeout(run, 400);
+  setTimeout(run, 1600);
+  setTimeout(async () => {
+    if (!settingsFallback) return;
+    try {
+      settingsCache = await request(MESSAGE_TYPES.GET_SETTINGS);
+      settingsFallback = false;
+      shrimptLog("boot", "late GET_SETTINGS succeeded; rescanning");
+      await rescanPage();
+    } catch (_e) {
+      shrimptLog("boot", "late GET_SETTINGS still failing; keeping defaults");
+    }
+  }, 1200);
 }
 
 function scheduleRescan() {
@@ -152,26 +256,102 @@ function acceptEligibleTextNode(node) {
   const parent = node.parentElement;
   if (!parent) return false;
   if (["SCRIPT", "STYLE", "NOSCRIPT", "TEXTAREA"].includes(parent.tagName)) return false;
-  if (parent.closest(".uwu-scan-hud, .uwu-chrome-dock")) return false;
-  if (parent.closest(".uwu-envelope-wrapper")) return false;
+  if (parent.closest(".shrimpt-scan-hud, .shrimpt-chrome-dock")) return false;
+  if (parent.closest(".shrimpt-envelope-wrapper")) return false;
   return true;
+}
+
+/**
+ * Browsers and editors often split one logical string into adjacent TEXT_NODE siblings.
+ * Envelopes must be matched on the merged run, then we replace the whole run at once.
+ */
+function expandForwardTextRun(startNode) {
+  const nodes = [];
+  let combined = "";
+  const limit = scanTextLimit();
+  let cur = startNode;
+
+  while (cur && cur.nodeType === Node.TEXT_NODE) {
+    const chunk = cur.nodeValue || "";
+    if (combined.length + chunk.length > limit) {
+      break;
+    }
+    combined += chunk;
+    nodes.push(cur);
+    cur = cur.nextSibling;
+  }
+
+  return { nodes, combined };
+}
+
+/** True when `combined` contains an opening !uwu! whose closing !uwu! is missing from this run. */
+function hasUnclosedMarkerInRun(combined) {
+  let cursor = 0;
+  while (cursor < combined.length) {
+    const start = combined.indexOf(MARKER_PREFIX, cursor);
+    if (start === -1) return false;
+    const payloadStart = start + MARKER_PREFIX.length;
+    const end = combined.indexOf(MARKER_SUFFIX, payloadStart);
+    if (end === -1) return true;
+    cursor = end + MARKER_SUFFIX.length;
+  }
+  return false;
 }
 
 function collectEligibleTextNodes(root) {
   const out = [];
   if (!root) return out;
 
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
-    acceptNode(node) {
-      return acceptEligibleTextNode(node) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
-    }
-  });
+  function visit(node) {
+    if (!node) return;
 
-  let current;
-  while ((current = walker.nextNode())) {
-    out.push(current);
+    if (node.nodeType === Node.TEXT_NODE) {
+      if (acceptEligibleTextNode(node)) {
+        out.push(node);
+      }
+      return;
+    }
+
+    if (node.nodeType === Node.DOCUMENT_FRAGMENT_NODE) {
+      for (const child of node.childNodes) {
+        visit(child);
+      }
+      return;
+    }
+
+    if (node.nodeType !== Node.ELEMENT_NODE) {
+      return;
+    }
+
+    const el = /** @type {Element} */ (node);
+    const tag = el.tagName;
+    if (tag === "SCRIPT" || tag === "STYLE" || tag === "NOSCRIPT") {
+      return;
+    }
+
+    if (tag === "TEMPLATE") {
+      const tmpl = /** @type {HTMLTemplateElement} */ (el);
+      if (tmpl.content) {
+        visit(tmpl.content);
+      }
+      return;
+    }
+
+    for (const child of el.childNodes) {
+      visit(child);
+    }
+
+    if (el.shadowRoot) {
+      visit(el.shadowRoot);
+    }
   }
+
+  visit(root);
   return out;
+}
+
+function scanReadIndicatorsEnabled() {
+  return settingsCache?.showScanReadIndicators !== false;
 }
 
 function clearScanHighlight() {
@@ -181,6 +361,45 @@ function clearScanHighlight() {
     }
   } catch (_e) {
     /* ignore */
+  }
+}
+
+function clearFragmentHighlightOnly() {
+  try {
+    if (typeof CSS !== "undefined" && CSS.highlights?.delete) {
+      CSS.highlights.delete(FRAGMENT_HIGHLIGHT_NAME);
+    }
+  } catch (_e) {
+    /* ignore */
+  }
+}
+
+function applyFragmentHighlight(textNodes) {
+  try {
+    if (typeof CSS !== "undefined" && CSS.highlights?.delete) {
+      CSS.highlights.delete(FRAGMENT_HIGHLIGHT_NAME);
+    }
+  } catch (_e) {
+    /* ignore */
+  }
+
+  if (!textNodes.length || typeof Highlight === "undefined" || !CSS.highlights?.set) return;
+
+  const highlight = new Highlight();
+  for (const node of textNodes) {
+    if (!node.parentNode || !acceptEligibleTextNode(node)) continue;
+    try {
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      highlight.add(range);
+    } catch (_e) {
+      /* detached or invalid */
+    }
+  }
+  try {
+    CSS.highlights.set(FRAGMENT_HIGHLIGHT_NAME, highlight);
+  } catch (_e) {
+    /* unsupported */
   }
 }
 
@@ -207,34 +426,50 @@ function applyScanHighlight(textNodes) {
 }
 
 function ensureScanHud() {
-  if (hudRoot?.isConnected && hudRoot.querySelector(".uwu-scan-hud-drag")) {
+  if (hudRoot?.isConnected && hudRoot.querySelector(".shrimpt-scan-hud-drag")) {
     applyHudLayoutPosition();
     return;
   }
   if (hudRoot?.isConnected) hudRoot.remove();
 
   hudRoot = document.createElement("div");
-  hudRoot.className = "uwu-scan-hud";
+  hudRoot.className = "shrimpt-scan-hud";
   hudRoot.setAttribute("role", "status");
   hudRoot.setAttribute("aria-live", "polite");
   hudRoot.innerHTML = `
-    <button type="button" class="uwu-scan-hud-drag" aria-label="Drag to move scan summary">⣿</button>
-    <div class="uwu-scan-hud-inner">
-      <div class="uwu-scan-hud-top">
-        <div class="uwu-scan-hud-headline">
-          <span class="uwu-scan-hud-title">UWU layer</span>
-          <span class="uwu-scan-hud-pill" aria-hidden="true"></span>
+    <button type="button" class="shrimpt-scan-hud-drag" aria-label="Drag to move scan summary">⣿</button>
+    <div class="shrimpt-scan-hud-inner">
+      <div class="shrimpt-scan-hud-top">
+        <div class="shrimpt-scan-hud-headline">
+          <span class="shrimpt-scan-hud-title">Shrimpt layer</span>
+          <span class="shrimpt-scan-hud-pill" aria-hidden="true"></span>
         </div>
-        <button type="button" class="uwu-scan-hud-toggle" aria-expanded="true" aria-label="Collapse scan summary">▾</button>
+        <button type="button" class="shrimpt-scan-hud-toggle" aria-expanded="true" aria-label="Collapse scan summary">▾</button>
       </div>
-      <div class="uwu-scan-hud-details">
-        <p class="uwu-scan-hud-stats"><strong class="uwu-scan-hud-count">—</strong></p>
-        <p class="uwu-scan-hud-meta muted"></p>
+      <div class="shrimpt-scan-hud-details">
+        <label class="shrimpt-scan-hud-hl-row">
+          <input type="checkbox" class="shrimpt-scan-hud-hl-cb" checked aria-label="Highlight text regions the scanner reads on the page" />
+          <span class="shrimpt-scan-hud-hl-label">Highlight scanned text</span>
+        </label>
+        <p class="shrimpt-scan-hud-stats"><strong class="shrimpt-scan-hud-count">—</strong></p>
+        <p class="shrimpt-scan-hud-meta muted"></p>
       </div>
     </div>
   `;
 
-  const toggle = hudRoot.querySelector(".uwu-scan-hud-toggle");
+  const hlCb = /** @type {HTMLInputElement | null} */ (hudRoot.querySelector(".shrimpt-scan-hud-hl-cb"));
+  hlCb?.addEventListener("change", async () => {
+    const on = hlCb.checked;
+    try {
+      settingsCache = await request(MESSAGE_TYPES.UPDATE_SETTINGS, { showScanReadIndicators: on });
+    } catch (_e) {
+      hlCb.checked = !on;
+      return;
+    }
+    await rescanPage();
+  });
+
+  const toggle = hudRoot.querySelector(".shrimpt-scan-hud-toggle");
   toggle?.addEventListener("click", () => {
     const collapsed = hudRoot.classList.toggle("is-collapsed");
     toggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
@@ -244,23 +479,44 @@ function ensureScanHud() {
 
   (document.body || document.documentElement).appendChild(hudRoot);
   applyHudLayoutPosition();
-  const dragEl = hudRoot.querySelector(".uwu-scan-hud-drag");
+  const dragEl = hudRoot.querySelector(".shrimpt-scan-hud-drag");
   attachOverlayDrag(hudRoot, dragEl, "uwuHudLeft", "uwuHudTop");
 }
 
-function updateScanHud({ textNodeCount, ciphertextBlocks, highlightSupported }) {
+function updateScanHud({
+  textNodeCount,
+  ciphertextBlocks,
+  highlightSupported,
+  incompleteFragments = 0,
+  readIndicatorsOn = true
+}) {
   ensureScanHud();
-  const statsEl = hudRoot.querySelector(".uwu-scan-hud-stats");
-  const metaEl = hudRoot.querySelector(".uwu-scan-hud-meta");
-  const pillEl = hudRoot.querySelector(".uwu-scan-hud-pill");
+  const statsEl = hudRoot.querySelector(".shrimpt-scan-hud-stats");
+  const metaEl = hudRoot.querySelector(".shrimpt-scan-hud-meta");
+  const pillEl = hudRoot.querySelector(".shrimpt-scan-hud-pill");
+  const hlCb = /** @type {HTMLInputElement | null} */ (hudRoot.querySelector(".shrimpt-scan-hud-hl-cb"));
   if (!statsEl || !metaEl) return;
 
+  if (hlCb && hlCb.checked !== readIndicatorsOn) {
+    hlCb.checked = readIndicatorsOn;
+  }
+
+  hudRoot.classList.toggle("shrimpt-scan-hud--fragment-alert", incompleteFragments > 0 && readIndicatorsOn);
+
   if (pillEl) {
-    pillEl.textContent = `${textNodeCount} regions · ${ciphertextBlocks} enc`;
+    pillEl.textContent =
+      incompleteFragments > 0
+        ? `${textNodeCount} regions · ${ciphertextBlocks} enc · ${incompleteFragments} open !uwu!`
+        : `${textNodeCount} regions · ${ciphertextBlocks} enc`;
   }
 
   const hl = highlightSupported ? "" : " Highlights unavailable in this browser.";
-  statsEl.innerHTML = `<strong class="uwu-scan-hud-count">${textNodeCount}</strong> text region${textNodeCount === 1 ? "" : "s"} scanned · <strong>${ciphertextBlocks}</strong> encrypted block${ciphertextBlocks === 1 ? "" : "s"}${hl}`;
+  const frag =
+    incompleteFragments > 0 && readIndicatorsOn
+      ? ` <strong>${incompleteFragments}</strong> incomplete <code>!uwu!</code> fragment${incompleteFragments === 1 ? "" : "s"} (red tint).`
+      : "";
+  const indOff = readIndicatorsOn ? "" : " Read indicators off (blue/red tints hidden).";
+  statsEl.innerHTML = `<strong class="shrimpt-scan-hud-count">${textNodeCount}</strong> text region${textNodeCount === 1 ? "" : "s"} scanned · <strong>${ciphertextBlocks}</strong> encrypted block${ciphertextBlocks === 1 ? "" : "s"}${hl}${frag}${indOff}`;
 
   const time = new Date().toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
   metaEl.textContent = `Scan updated ${time}`;
@@ -269,30 +525,72 @@ function updateScanHud({ textNodeCount, ciphertextBlocks, highlightSupported }) 
 async function rescanPage() {
   const gen = ++scanGeneration;
   const root = document.body;
-  if (!root) return;
+  if (!root) {
+    shrimptLog("scan", "rescan skipped (no document.body yet)");
+    return;
+  }
 
   const snapshot = collectEligibleTextNodes(root);
+  shrimptLog("scan", "rescan start", {
+    gen,
+    eligibleTextNodes: snapshot.length,
+    href: location.href?.slice(0, 200)
+  });
+
   const markerNodes = snapshot.filter((n) => {
     const t = n.nodeValue || "";
-    return t.includes(MARKER_PREFIX) && findEnvelopeMatches(t).length > 0;
+    if (!t.includes(MARKER_PREFIX)) return false;
+    const { combined } = expandForwardTextRun(n);
+    return findEnvelopeMatches(combined).length > 0;
+  });
+
+  const incompleteMarkerNodes = snapshot.filter((n) => {
+    const t = n.nodeValue || "";
+    if (!t.includes(MARKER_PREFIX)) return false;
+    const { combined } = expandForwardTextRun(n);
+    if (findEnvelopeMatches(combined).length > 0) return false;
+    return hasUnclosedMarkerInRun(combined);
   });
 
   for (const node of markerNodes) {
-    if (gen !== scanGeneration) return;
+    if (gen !== scanGeneration) {
+      shrimptLog("scan", "rescan superseded during marker processing", { gen, latestGen: scanGeneration });
+      return;
+    }
     await processTextNode(node);
   }
 
-  if (gen !== scanGeneration) return;
+  if (gen !== scanGeneration) {
+    shrimptLog("scan", "rescan superseded before highlights", { gen, latestGen: scanGeneration });
+    return;
+  }
 
   const afterNodes = collectEligibleTextNodes(document.body);
-  applyScanHighlight(afterNodes);
+  if (scanReadIndicatorsEnabled()) {
+    applyScanHighlight(afterNodes);
+    applyFragmentHighlight(incompleteMarkerNodes);
+  } else {
+    clearScanHighlight();
+    clearFragmentHighlightOnly();
+  }
 
-  const ciphertextBlocks = document.querySelectorAll(".uwu-envelope-wrapper").length;
+  const ciphertextBlocks = document.querySelectorAll(".shrimpt-envelope-wrapper").length;
   const highlightSupported = typeof Highlight !== "undefined" && Boolean(CSS.highlights?.set);
 
   updateScanHud({
     textNodeCount: afterNodes.length,
     ciphertextBlocks,
+    highlightSupported,
+    incompleteFragments: incompleteMarkerNodes.length,
+    readIndicatorsOn: scanReadIndicatorsEnabled()
+  });
+
+  shrimptLog("scan", "rescan done", {
+    gen,
+    markerJobsQueued: markerNodes.length,
+    incompleteMarkerRuns: incompleteMarkerNodes.length,
+    ciphertextWrappers: ciphertextBlocks,
+    textRegionsAfter: afterNodes.length,
     highlightSupported
   });
 
@@ -311,8 +609,8 @@ function syncFieldCandidateMarks() {
 
   const allCe = [];
   for (const el of root.querySelectorAll(CE_HOST_SELECTOR)) {
-    if (isUwuChromeTree(el)) continue;
-    if (el.closest(".uwu-envelope-wrapper")) continue;
+    if (isShrimptChromeTree(el)) continue;
+    if (el.closest(".shrimpt-envelope-wrapper")) continue;
     const v = el.getAttribute("contenteditable");
     if (v !== "true" && v !== "" && v !== "plaintext-only") continue;
     allCe.push(el);
@@ -333,8 +631,8 @@ function syncFieldCandidateMarks() {
   }
 
   for (const el of root.querySelectorAll("textarea, input")) {
-    if (isUwuChromeTree(el)) continue;
-    if (el.closest(".uwu-envelope-wrapper")) continue;
+    if (isShrimptChromeTree(el)) continue;
+    if (el.closest(".shrimpt-envelope-wrapper")) continue;
     if (el.tagName === "TEXTAREA") {
       if (!el.disabled && !el.readOnly) next.add(el);
       continue;
@@ -348,46 +646,80 @@ function syncFieldCandidateMarks() {
 
   for (const oldEl of lastFieldCandidateEls) {
     if (!next.has(oldEl) && oldEl.isConnected) {
-      oldEl.classList.remove(UWU_FIELD_CANDIDATE_CLASS);
+      oldEl.classList.remove(SHRIMPT_FIELD_CANDIDATE_CLASS);
     }
   }
   for (const newEl of next) {
-    newEl.classList.add(UWU_FIELD_CANDIDATE_CLASS);
+    newEl.classList.add(SHRIMPT_FIELD_CANDIDATE_CLASS);
   }
   lastFieldCandidateEls = next;
 }
 
 async function processTextNode(textNode) {
-  if (!textNode || processedNodes.has(textNode)) return;
+  if (!textNode || !textNode.isConnected || processedNodes.has(textNode)) return;
+  if (!acceptEligibleTextNode(textNode)) return;
 
-  const text = textNode.nodeValue || "";
-  if (text.length > scanTextLimit()) return;
-  if (!text.includes(MARKER_PREFIX)) return;
+  const { nodes, combined } = expandForwardTextRun(textNode);
+  if (!combined.includes(MARKER_PREFIX)) return;
 
-  const matches = findEnvelopeMatches(text);
-  if (!matches.length) return;
+  const matches = findEnvelopeMatches(combined);
+  if (!matches.length) {
+    shrimptLog("scan", "prefix in run but no complete envelope (check closing !uwu! / sibling splits)", {
+      runLength: combined.length,
+      siblingTextNodes: nodes.length,
+      preview: combined.slice(0, 100).replace(/\s+/g, " ")
+    });
+    return;
+  }
 
-  processedNodes.add(textNode);
+  shrimptLog("scan", "replacing text run with envelope chip(s)", {
+    envelopes: matches.length,
+    runLength: combined.length,
+    siblingTextNodes: nodes.length,
+    payloadLens: matches.map((m) => m.payload?.length ?? 0)
+  });
 
-  const fragment = document.createDocumentFragment();
-  let cursor = 0;
+  for (const n of nodes) {
+    processedNodes.add(n);
+  }
 
-  for (const match of matches) {
-    if (match.start > cursor) {
-      fragment.appendChild(document.createTextNode(text.slice(cursor, match.start)));
+  try {
+    const fragment = document.createDocumentFragment();
+    let cursor = 0;
+
+    for (const match of matches) {
+      if (match.start > cursor) {
+        fragment.appendChild(document.createTextNode(combined.slice(cursor, match.start)));
+      }
+      fragment.appendChild(await buildDecryptedNode(normalizeCompactPayload(match.payload)));
+      cursor = match.end;
     }
 
-    const placeholder = await buildDecryptedNode(match.payload);
-    fragment.appendChild(placeholder);
+    if (cursor < combined.length) {
+      fragment.appendChild(document.createTextNode(combined.slice(cursor)));
+    }
 
-    cursor = match.end;
+    const parent = nodes[0].parentNode;
+    if (!parent) {
+      for (const n of nodes) {
+        processedNodes.delete(n);
+      }
+      return;
+    }
+
+    parent.insertBefore(fragment, nodes[0]);
+    for (const n of nodes) {
+      if (n.parentNode === parent) {
+        parent.removeChild(n);
+      }
+    }
+  } catch (err) {
+    for (const n of nodes) {
+      processedNodes.delete(n);
+    }
+    console.error("[Shrimpt] processTextNode", err);
+    shrimptLog("scan", "processTextNode threw", { message: err?.message, name: err?.name });
   }
-
-  if (cursor < text.length) {
-    fragment.appendChild(document.createTextNode(text.slice(cursor)));
-  }
-
-  textNode.parentNode?.replaceChild(fragment, textNode);
 }
 
 /** Cached CSS for closed shadow (chip + plaintext live inside shadow; page JS cannot read tree) */
@@ -402,13 +734,19 @@ async function getEnvelopeShadowCss() {
   return envelopeShadowCssCache;
 }
 
+function applyShrimptBadgeVisual(badge, state) {
+  const base = "shrimpt-envelope-button";
+  badge.className = `${base} ${base}--${state}`;
+}
+
 async function buildDecryptedNode(compactEnvelope) {
+  const compact = normalizeCompactPayload(compactEnvelope);
   const wrapper = document.createElement("span");
-  wrapper.className = "uwu-envelope-wrapper uwu-scanned-ciphertext";
-  wrapper.dataset.uwuCompact = compactEnvelope;
+  wrapper.className = "shrimpt-envelope-wrapper shrimpt-scanned-ciphertext";
+  wrapper.dataset.shrimptCompact = compact;
 
   const shadowHost = document.createElement("span");
-  shadowHost.className = "uwu-envelope-shadow-host";
+  shadowHost.className = "shrimpt-envelope-shadow-host";
   const shadow = shadowHost.attachShadow({ mode: "closed" });
 
   const style = document.createElement("style");
@@ -416,14 +754,14 @@ async function buildDecryptedNode(compactEnvelope) {
   shadow.appendChild(style);
 
   const inner = document.createElement("span");
-  inner.className = "uwu-envelope-inner";
+  inner.className = "shrimpt-envelope-inner";
 
   const badge = document.createElement("button");
   badge.type = "button";
-  applyUwuBadgeVisual(badge, "pending");
+  applyShrimptBadgeVisual(badge, "pending");
 
   const reveal = document.createElement("span");
-  reveal.className = "uwu-envelope-reveal";
+  reveal.className = "shrimpt-envelope-reveal";
   reveal.hidden = true;
   reveal.textContent = "Decrypting...";
 
@@ -433,71 +771,100 @@ async function buildDecryptedNode(compactEnvelope) {
   wrapper.appendChild(shadowHost);
 
   if (!settingsCache?.autoDecrypt) {
+    shrimptLog("decrypt", "chip: autoDecrypt off — decrypt on chip click", { compactLen: compact.length });
     badge.addEventListener("click", async () => {
-      await revealMessage(compactEnvelope, reveal, badge);
+      await revealMessage(compact, reveal, badge, { forPageScan: false });
     });
     return wrapper;
   }
 
-  if (settingsCache?.clickToReveal) {
-    try {
-      const result = await request(MESSAGE_TYPES.DECRYPT_ENVELOPE, { compactEnvelope });
-      const ok = applyDecryptResultToUi(result, reveal, badge, { keepPlaintextHidden: true });
-      if (ok) {
-        badge.addEventListener("click", () => {
-          reveal.hidden = !reveal.hidden;
-        });
-      }
-      return wrapper;
-    } catch (error) {
-      const locked = error?.message === "LOCKED";
-      if (locked) {
-        applyUwuBadgeVisual(badge, "locked");
-        reveal.textContent = "Extension locked — open the UWU popup and enter your unlock secret.";
-        reveal.hidden = false;
-      } else {
-        applyUwuBadgeVisual(badge, "noKey");
-        reveal.textContent =
-          "Your active identity can’t open this UWU message — it may be for someone else. Hover the chip for details.";
-        reveal.hidden = false;
-      }
-      return wrapper;
+  try {
+    shrimptLog("decrypt", "DECRYPT_ENVELOPE (page scan)", {
+      compactLen: compact.length,
+      forPageScan: true
+    });
+    const result = await request(MESSAGE_TYPES.DECRYPT_ENVELOPE, {
+      compactEnvelope: compact,
+      forPageScan: true
+    });
+    const ok = applyDecryptResultToUi(result, reveal, badge, { keepPlaintextHidden: false });
+    shrimptLog("decrypt", "decrypt result (auto)", {
+      ok,
+      skipped: result?.skipped,
+      code: result?.code,
+      verified: result?.verified,
+      conversationMismatch: result?.conversationMismatch,
+      plaintextLen: (result?.plaintext ?? "").length
+    });
+    return wrapper;
+  } catch (error) {
+    const locked = error?.message === "LOCKED";
+    shrimptLog("decrypt", "decrypt failed (auto)", { message: error?.message, locked });
+    if (locked) {
+      applyShrimptBadgeVisual(badge, "pending");
+      reveal.textContent = "Extension locked — open the Shrimpt popup and enter your unlock secret.";
+      reveal.hidden = false;
+    } else {
+      applyShrimptBadgeVisual(badge, "noKey");
+      reveal.textContent =
+        "Your active identity can’t open this Shrimpt message — it may be for someone else. Hover the chip for details.";
+      reveal.hidden = false;
     }
+    return wrapper;
   }
-
-  await revealMessage(compactEnvelope, reveal, badge);
-  return wrapper;
 }
 
 function applyDecryptResultToUi(result, reveal, badge, options = {}) {
   const keepPlaintextHidden = Boolean(options.keepPlaintextHidden);
   if (result?.skipped && result.code === "WRONG_CONVERSATION") {
+    shrimptLog("decrypt", "UI: wrong conversation (skipped)", { code: result.code });
     reveal.textContent =
-      "This message was not sent by the contact selected as Them in UWU. Pick Anyone or the right person in the popup.";
+      "This message was not sent by the contact selected as Them in Shrimpt. Pick Anyone or the right person in the popup.";
     reveal.hidden = false;
-    applyUwuBadgeVisual(badge, "wrongChat");
+    applyShrimptBadgeVisual(badge, "wrongChat");
     return false;
   }
-  reveal.textContent = result.plaintext;
+  reveal.textContent = result.plaintext ?? "";
   reveal.dataset.verified = String(result.verified);
-  applyUwuBadgeVisual(badge, result.verified ? "verified" : "open");
+  if (result?.conversationMismatch) {
+    applyShrimptBadgeVisual(badge, "wrongChat");
+    reveal.title =
+      "Sender does not match Them (Anyone or change Them in the dock/popup). Plaintext is shown so you can still read on the page.";
+  } else {
+    reveal.removeAttribute("title");
+    applyShrimptBadgeVisual(badge, result.verified ? "verified" : "open");
+  }
   reveal.hidden = keepPlaintextHidden;
   return true;
 }
 
-async function revealMessage(compactEnvelope, reveal, badge) {
+async function revealMessage(compactEnvelope, reveal, badge, options = {}) {
+  const { forPageScan = false } = options;
+  const compact = normalizeCompactPayload(compactEnvelope);
+  shrimptLog("decrypt", "revealMessage (user)", { forPageScan, compactLen: compact.length });
   try {
-    const result = await request(MESSAGE_TYPES.DECRYPT_ENVELOPE, { compactEnvelope });
-    applyDecryptResultToUi(result, reveal, badge);
+    const result = await request(MESSAGE_TYPES.DECRYPT_ENVELOPE, {
+      compactEnvelope: compact,
+      forPageScan
+    });
+    applyDecryptResultToUi(result, reveal, badge, { keepPlaintextHidden: false });
+    shrimptLog("decrypt", "revealMessage ok", {
+      skipped: result?.skipped,
+      code: result?.code,
+      verified: result?.verified,
+      conversationMismatch: result?.conversationMismatch,
+      plaintextLen: (result?.plaintext ?? "").length
+    });
   } catch (error) {
     const locked = error?.message === "LOCKED";
+    shrimptLog("decrypt", "revealMessage error", { message: error?.message, locked });
     if (locked) {
-      applyUwuBadgeVisual(badge, "locked");
-      reveal.textContent = "Extension locked — open the UWU popup and enter your unlock secret.";
+      applyShrimptBadgeVisual(badge, "pending");
+      reveal.textContent = "Extension locked — open the Shrimpt popup and enter your unlock secret.";
     } else {
-      applyUwuBadgeVisual(badge, "noKey");
+      applyShrimptBadgeVisual(badge, "noKey");
       reveal.textContent =
-        "Your active identity can’t open this UWU message — it may be for someone else. Hover the chip for details.";
+        "Your active identity can’t open this Shrimpt message — it may be for someone else. Hover the chip for details.";
     }
     reveal.hidden = false;
   }
@@ -512,12 +879,29 @@ function getInputEncryptMode() {
   return settingsCache?.inputEncryptMode || "off";
 }
 
-function isUwuChromeTree(node) {
-  return Boolean(
-    node?.closest?.(
-      ".uwu-scan-hud, .uwu-chrome-dock, .uwu-field-overlay-host, .uwu-field-encrypt-tooltip-host"
+function isShrimptChromeTree(node) {
+  if (!node) return false;
+  let el = node.nodeType === Node.TEXT_NODE ? node.parentElement : node;
+  if (!el?.closest) return false;
+  if (
+    el.closest(
+      ".shrimpt-scan-hud, .shrimpt-chrome-dock, .shrimpt-field-overlay-host, .shrimpt-field-encrypt-tooltip-host"
     )
-  );
+  ) {
+    return true;
+  }
+  const root = el.getRootNode();
+  if (root instanceof ShadowRoot) {
+    const host = root.host;
+    if (
+      host?.matches?.(
+        ".shrimpt-chrome-dock, .shrimpt-field-overlay-host, .shrimpt-field-encrypt-tooltip-host, .shrimpt-scan-hud"
+      )
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -531,7 +915,7 @@ function getContentEditableHost(fromEl) {
   if (n.nodeType === Node.TEXT_NODE) n = n.parentElement;
   if (!n || n.nodeType !== Node.ELEMENT_NODE) return null;
   while (n && n !== document.documentElement) {
-    if (isUwuChromeTree(n)) return null;
+    if (isShrimptChromeTree(n)) return null;
     const v = n.getAttribute("contenteditable");
     if (v === "true" || v === "" || v === "plaintext-only") {
       if (["SCRIPT", "STYLE", "NOSCRIPT"].includes(n.tagName)) return null;
@@ -590,16 +974,326 @@ function setFieldPlain(el, kind, text) {
     setNativeFormControlValue(el, text);
     return;
   }
-  el.textContent = text;
-  el.dispatchEvent(new Event("input", { bubbles: true }));
+  replaceContentEditableWhole(el, text);
 }
 
 function setFieldWrappedCipher(el, kind, wrapped) {
   setFieldPlain(el, kind, wrapped);
 }
 
+function rangeFullyInsideHost(range, hostEl) {
+  if (!range || !hostEl) return false;
+  try {
+    return hostEl.contains(range.startContainer) && hostEl.contains(range.endContainer);
+  } catch (_e) {
+    return false;
+  }
+}
+
+function firstDeepTextNode(root) {
+  if (!root) return null;
+  const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  return w.nextNode();
+}
+
+function lastDeepTextNode(root) {
+  if (!root) return null;
+  const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let last = null;
+  let n;
+  while ((n = w.nextNode())) last = n;
+  return last;
+}
+
+function collectEditableTextNodes(host) {
+  const out = [];
+  const w = document.createTreeWalker(host, NodeFilter.SHOW_TEXT);
+  let n;
+  while ((n = w.nextNode())) {
+    let p = n.parentElement;
+    let skip = false;
+    while (p && p !== host) {
+      if (isShrimptChromeTree(p) || ["SCRIPT", "STYLE", "NOSCRIPT"].includes(p.tagName)) {
+        skip = true;
+        break;
+      }
+      p = p.parentElement;
+    }
+    if (!skip) out.push(n);
+  }
+  return out;
+}
+
+function isLexicalEditorContentHost(host) {
+  return host?.getAttribute?.("data-lexical-editor") != null;
+}
+
+/**
+ * Lexical / rich editors keep block wrappers (e.g. &lt;p&gt;&lt;br&gt;&lt;/p&gt;). Replacing
+ * host.textContent nukes that tree and breaks the editor.
+ */
+function replaceLexicalEditorHostContent(host, wrapped) {
+  let block = host.querySelector(":scope > p");
+  if (!block) block = host.firstElementChild;
+  if (!block) {
+    const p = document.createElement("p");
+    p.appendChild(document.createTextNode(wrapped));
+    host.replaceChildren(p);
+    return;
+  }
+  block.replaceChildren(document.createTextNode(wrapped));
+  for (const n of [...host.childNodes]) {
+    if (n !== block) n.remove();
+  }
+}
+
+function replaceLexicalEmptyPlaceholder(host) {
+  let block = host.querySelector(":scope > p");
+  if (!block) block = host.firstElementChild;
+  if (!block) {
+    const p = document.createElement("p");
+    p.appendChild(document.createElement("br"));
+    host.replaceChildren(p);
+    return;
+  }
+  block.replaceChildren();
+  block.appendChild(document.createElement("br"));
+  for (const n of [...host.childNodes]) {
+    if (n !== block) n.remove();
+  }
+}
+
+/**
+ * Replace all visible text in a contenteditable host while keeping block structure where possible.
+ */
+function replaceContentEditableWhole(host, wrapped) {
+  if (!host) return;
+  const lexical = isLexicalEditorContentHost(host);
+
+  if (!wrapped) {
+    if (lexical) {
+      replaceLexicalEmptyPlaceholder(host);
+    } else {
+      host.textContent = "";
+    }
+    host.dispatchEvent(new Event("input", { bubbles: true }));
+    try {
+      host.focus();
+    } catch (_e) {
+      /* ignore */
+    }
+    return;
+  }
+
+  if (lexical) {
+    replaceLexicalEditorHostContent(host, wrapped);
+  } else {
+    const texts = collectEditableTextNodes(host).filter((t) => (t.nodeValue || "").length > 0);
+    if (texts.length === 1) {
+      texts[0].data = wrapped;
+    } else if (texts.length > 1) {
+      const r = document.createRange();
+      r.setStart(texts[0], 0);
+      const last = texts[texts.length - 1];
+      r.setEnd(last, last.nodeValue.length);
+      r.deleteContents();
+      const tn = document.createTextNode(wrapped);
+      r.insertNode(tn);
+      r.setStartAfter(tn);
+      r.collapse(true);
+      const sel = document.getSelection?.();
+      if (sel) {
+        sel.removeAllRanges();
+        sel.addRange(r);
+      }
+    } else {
+      const first = host.firstElementChild;
+      if (first) {
+        first.replaceChildren(document.createTextNode(wrapped));
+        for (const n of [...host.childNodes]) {
+          if (n !== first) n.remove();
+        }
+      } else {
+        host.textContent = wrapped;
+      }
+    }
+  }
+
+  host.dispatchEvent(new Event("input", { bubbles: true }));
+  try {
+    host.focus();
+  } catch (_e) {
+    /* ignore */
+  }
+}
+
+/**
+ * Collapsed caret: resolve nested markup (e.g. caret in &lt;p&gt; next to &lt;br&gt;) to a text run.
+ * @returns {{ plain: string, range: Range } | null}
+ */
+function textNodeRunFromCollapsedCaret(host, live, sel) {
+  if (!live.collapsed || !rangeFullyInsideHost(live, host) || !sel) return null;
+  const an = sel.anchorNode;
+  const off = sel.anchorOffset;
+
+  const pack = (tn) => {
+    if (!tn || tn.nodeType !== Node.TEXT_NODE || !host.contains(tn)) return null;
+    const raw = tn.nodeValue ?? "";
+    if (!raw.length) return null;
+    const range = document.createRange();
+    range.selectNodeContents(tn);
+    return { plain: raw.replace(/\r\n/g, "\n"), range: range.cloneRange() };
+  };
+
+  if (an.nodeType === Node.TEXT_NODE) return pack(an);
+
+  if (an.nodeType === Node.ELEMENT_NODE && host.contains(an)) {
+    if (off < an.childNodes.length) {
+      const next = an.childNodes[off];
+      let hit = pack(next);
+      if (!hit && next?.nodeType === Node.ELEMENT_NODE) hit = pack(firstDeepTextNode(next));
+      if (hit) return hit;
+    }
+    if (off > 0) {
+      const prev = an.childNodes[off - 1];
+      let hit = pack(prev);
+      if (!hit && prev?.nodeType === Node.ELEMENT_NODE) hit = pack(lastDeepTextNode(prev));
+      if (hit) return hit;
+    }
+  }
+  return null;
+}
+
+/**
+ * Decide what to encrypt and how to splice ciphertext back (preserves CE markup outside the slice).
+ * @returns {{ plain: string, spec: object }}
+ */
+function getEncryptReplaceSpec(el, kind) {
+  if (kind === "value") {
+    const v = el.value ?? "";
+    let a = typeof el.selectionStart === "number" ? el.selectionStart : 0;
+    let b = typeof el.selectionEnd === "number" ? el.selectionEnd : 0;
+    if (a > b) {
+      const t = a;
+      a = b;
+      b = t;
+    }
+    if (b > a) {
+      return {
+        plain: v.slice(a, b).replace(/\r\n/g, "\n"),
+        spec: { mode: "value_slice", start: a, end: b }
+      };
+    }
+    return {
+      plain: v.replace(/\r\n/g, "\n"),
+      spec: { mode: "value_all" }
+    };
+  }
+
+  const host = el;
+  const sel = document.getSelection?.();
+  if (sel && sel.rangeCount > 0) {
+    const live = sel.getRangeAt(0);
+    if (rangeFullyInsideHost(live, host)) {
+      if (!live.collapsed) {
+        const plain = live.toString().replace(/\r\n/g, "\n");
+        return {
+          plain,
+          spec: { mode: "ce_range", range: live.cloneRange() }
+        };
+      }
+      const run = textNodeRunFromCollapsedCaret(host, live, sel);
+      if (run) {
+        return {
+          plain: run.plain,
+          spec: { mode: "ce_text_node", range: run.range }
+        };
+      }
+    }
+  }
+
+  const all = (host.innerText ?? host.textContent ?? "").replace(/\r\n/g, "\n");
+  return { plain: all, spec: { mode: "ce_all" } };
+}
+
+function applyWrappedCiphertextWithSpec(el, kind, wrapped, spec) {
+  if (kind === "value") {
+    if (spec.mode === "value_slice" && typeof spec.start === "number" && typeof spec.end === "number") {
+      const v = el.value ?? "";
+      const out = v.slice(0, spec.start) + wrapped + v.slice(spec.end);
+      setNativeFormControlValue(el, out);
+      const caret = spec.start + wrapped.length;
+      try {
+        el.selectionStart = el.selectionEnd = caret;
+      } catch (_e) {
+        /* some inputs are read-only to selection API */
+      }
+      return;
+    }
+    setNativeFormControlValue(el, wrapped);
+    return;
+  }
+
+  if (spec.mode === "ce_range" && spec.range) {
+    const range = spec.range;
+    if (
+      !range.startContainer?.isConnected ||
+      !el.contains(range.startContainer) ||
+      !el.contains(range.endContainer)
+    ) {
+      replaceContentEditableWhole(el, wrapped);
+      return;
+    }
+    range.deleteContents();
+    const tn = document.createTextNode(wrapped);
+    range.insertNode(tn);
+    range.setStartAfter(tn);
+    range.collapse(true);
+    const sel = document.getSelection?.();
+    if (sel) {
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
+    try {
+      el.focus();
+    } catch (_e) {
+      /* ignore */
+    }
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    return;
+  }
+
+  if (spec.mode === "ce_text_node" && spec.range) {
+    const tn = spec.range.startContainer;
+    if (tn?.nodeType === Node.TEXT_NODE && tn.isConnected && el.contains(tn)) {
+      tn.replaceData(0, tn.length, wrapped);
+      const sel = document.getSelection?.();
+      if (sel) {
+        const nr = document.createRange();
+        const end = Math.min(wrapped.length, tn.length);
+        nr.setStart(tn, end);
+        nr.collapse(true);
+        sel.removeAllRanges();
+        sel.addRange(nr);
+      }
+      try {
+        el.focus();
+      } catch (_e) {
+        /* ignore */
+      }
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+      return;
+    }
+    replaceContentEditableWhole(el, wrapped);
+    return;
+  }
+
+  replaceContentEditableWhole(el, wrapped);
+}
+
 function resolveProtectableField(focusEl) {
-  let el = focusEl != null ? focusEl : document.activeElement;
+  const explicitTarget = focusEl != null;
+  let el = explicitTarget ? focusEl : document.activeElement;
   if (el?.nodeType === Node.TEXT_NODE) {
     const ce = getContentEditableHost(el);
     if (ce) return ce;
@@ -608,7 +1302,7 @@ function resolveProtectableField(focusEl) {
   if (!el || el.nodeType !== Node.ELEMENT_NODE) {
     return getContentEditableHostFromSelection();
   }
-  if (isUwuChromeTree(el)) return null;
+  if (isShrimptChromeTree(el)) return null;
 
   const tag = el.tagName;
   if (tag === "TEXTAREA") {
@@ -621,7 +1315,14 @@ function resolveProtectableField(focusEl) {
   }
   const ce = getContentEditableHost(el);
   if (ce) return ce;
-  return getContentEditableHostFromSelection();
+
+  /* Focus is on a real element that is not a field — never fall back to selection
+   * (would bind the wrong control, e.g. dock button + caret still in compose). */
+  if (explicitTarget) return null;
+  if (el === document.body || el === document.documentElement) {
+    return getContentEditableHostFromSelection();
+  }
+  return null;
 }
 
 function isProtectableField(el) {
@@ -685,8 +1386,8 @@ function syncFieldProtectionChrome() {
 function ensureChromeDock() {
   if (chromeDockHost?.isConnected) return;
   chromeDockHost = document.createElement("div");
-  chromeDockHost.className = "uwu-chrome-dock";
-  chromeDockHost.setAttribute("data-uwu-chrome", "1");
+  chromeDockHost.className = "shrimpt-chrome-dock";
+  chromeDockHost.setAttribute("data-shrimpt-chrome", "1");
   const shadow = chromeDockHost.attachShadow({ mode: "open" });
   shadow.innerHTML = `
     <style>
@@ -724,22 +1425,22 @@ function ensureChromeDock() {
       .status { display: block; font-size: 11px; color: #8b98ad; margin-top: 8px; min-height: 1.2em; }
     </style>
     <div class="dock">
-      <div class="drag" data-uwu-dock-drag>
+      <div class="drag" data-shrimpt-dock-drag>
         <span class="drag-mark" aria-hidden="true">⣿⣿</span>
-        <span class="drag-title">UWU — page tools</span>
+        <span class="drag-title">Shrimpt — page tools</span>
       </div>
       <div class="body">
         <div class="row">
-          <label class="lbl" for="uwu-enc-t">Fields</label>
-          <button type="button" id="uwu-enc-t" data-a="enc-toggle" aria-pressed="false">Off</button>
+          <label class="lbl" for="shrimpt-enc-t">Fields</label>
+          <button type="button" id="shrimpt-enc-t" data-a="enc-toggle" aria-pressed="false">Off</button>
         </div>
         <div class="row">
-          <label class="lbl" for="uwu-prof">You</label>
-          <select class="sel" id="uwu-prof" data-a="profiles" aria-label="Decrypt as profile"></select>
+          <label class="lbl" for="shrimpt-prof">You</label>
+          <select class="sel" id="shrimpt-prof" data-a="profiles" aria-label="Decrypt as profile"></select>
         </div>
         <div class="row">
-          <label class="lbl" for="uwu-con">Them</label>
-          <select class="sel" id="uwu-con" data-a="contacts" aria-label="Encrypt for contact"></select>
+          <label class="lbl" for="shrimpt-con">Them</label>
+          <select class="sel" id="shrimpt-con" data-a="contacts" aria-label="Encrypt for contact"></select>
         </div>
         <span class="status" data-a="status"></span>
       </div>
@@ -750,7 +1451,7 @@ function ensureChromeDock() {
   shadow.querySelector('[data-a="contacts"]').addEventListener("change", onDockContactChange);
   document.documentElement.appendChild(chromeDockHost);
   applyDockLayoutPosition();
-  const dragHandle = shadow.querySelector("[data-uwu-dock-drag]");
+  const dragHandle = shadow.querySelector("[data-shrimpt-dock-drag]");
   attachOverlayDrag(chromeDockHost, dragHandle, "uwuDockLeft", "uwuDockTop");
   requestAnimationFrame(() => applyDockLayoutPosition());
 }
@@ -777,6 +1478,7 @@ async function onDockEncryptToggle() {
     }
     syncFieldProtectionChrome();
     if (getInputEncryptMode() !== "off") {
+      tryBindFocusedProtectableField();
       scheduleFieldAutoBind();
     }
   } catch (e) {
@@ -790,7 +1492,7 @@ async function onDockProfileChange(ev) {
   try {
     await request(MESSAGE_TYPES.SET_ACTIVE_PROFILE, { profileId: id });
   } catch (e) {
-    setFieldToolbarStatus(e?.message === "LOCKED" ? "Locked — open the UWU popup and enter your unlock secret." : e.message || String(e));
+    setFieldToolbarStatus(e?.message === "LOCKED" ? "Locked — open the Shrimpt popup and enter your unlock secret." : e.message || String(e));
   }
 }
 
@@ -859,21 +1561,34 @@ function setFieldToolbarStatus(msg) {
   if (el) el.textContent = msg || "";
 }
 
-function scheduleFieldAutoBind() {
+function scheduleFieldAutoBind(expectedField) {
   clearTimeout(fieldAutoBindTimer);
   const gen = ++fieldAutoBindGen;
   fieldAutoBindTimer = setTimeout(() => {
     fieldAutoBindTimer = null;
     if (gen !== fieldAutoBindGen) return;
-    tryBindFocusedProtectableField();
+    tryBindFocusedProtectableField(expectedField);
   }, 120);
 }
 
-function tryBindFocusedProtectableField() {
+function tryBindFocusedProtectableField(expectedField) {
   if (getInputEncryptMode() === "off") return;
-  const cur = document.activeElement;
-  if (!cur || cur.nodeType !== Node.ELEMENT_NODE || isUwuChromeTree(cur)) return;
-  const el = resolveProtectableField(cur);
+
+  let el = null;
+  if (expectedField?.isConnected) {
+    const ae = document.activeElement;
+    if (fieldKind(expectedField) === "value") {
+      if (ae === expectedField) el = expectedField;
+    } else if (expectedField.contains(ae) || ae === expectedField) {
+      el = expectedField;
+    }
+  }
+
+  if (!el) {
+    const cur = document.activeElement;
+    if (!cur || cur.nodeType !== Node.ELEMENT_NODE || isShrimptChromeTree(cur)) return;
+    el = resolveProtectableField(cur);
+  }
   if (!el) return;
   if (fieldBinding?.target === el) return;
   bindFieldEncryptToElement(el);
@@ -896,7 +1611,9 @@ function bindFieldEncryptToElement(el) {
   setFieldToolbarStatus(
     mode === "live_overlay"
       ? "Type in the overlay, then click the tooltip to encrypt."
-      : "Type here, then click the tooltip to encrypt."
+      : fk === "contenteditable"
+        ? "Select the text to encrypt (or put the caret in one text run). Then click the tooltip."
+        : "Type here, then click the tooltip to encrypt."
   );
 }
 
@@ -907,11 +1624,11 @@ function startFieldEncryptFocusCapture() {
       if (getInputEncryptMode() === "off") return;
       const t = ev.target;
       if (!t || t.nodeType !== Node.ELEMENT_NODE) return;
-      if (isUwuChromeTree(t)) return;
+      if (isShrimptChromeTree(t)) return;
       const el = resolveProtectableField(t);
       if (!el) return;
       if (fieldBinding?.target === el) return;
-      scheduleFieldAutoBind();
+      scheduleFieldAutoBind(el);
     },
     true
   );
@@ -943,8 +1660,8 @@ function positionEncryptTooltip(host, el) {
 
 function createEncryptTooltipHost(targetEl, onEncryptClick) {
   const host = document.createElement("div");
-  host.className = "uwu-field-encrypt-tooltip-host";
-  host.setAttribute("data-uwu-chrome", "1");
+  host.className = "shrimpt-field-encrypt-tooltip-host";
+  host.setAttribute("data-shrimpt-chrome", "1");
   host.style.cssText =
     "position:fixed;left:0;top:0;z-index:2147483647;margin:0;padding:0;border:none;background:transparent;pointer-events:auto;box-sizing:border-box;display:block;visibility:visible;opacity:1;";
   const shadow = host.attachShadow({ mode: "open" });
@@ -981,9 +1698,18 @@ function createEncryptTooltipHost(targetEl, onEncryptClick) {
     </style>
     <button type="button" class="tip" data-a="encrypt-tip">Click to encrypt</button>
   `;
-  shadow.querySelector('[data-a="encrypt-tip"]').addEventListener("click", (e) => {
+  const encryptTipBtn = shadow.querySelector('[data-a="encrypt-tip"]');
+  const keepEditorSelection = (e) => {
+    e.preventDefault();
+  };
+  encryptTipBtn.addEventListener("mousedown", keepEditorSelection);
+  encryptTipBtn.addEventListener("click", (e) => {
     e.stopPropagation();
-    onEncryptClick();
+    e.preventDefault();
+    const out = onEncryptClick();
+    if (out && typeof out.then === "function") {
+      out.catch((err) => console.error("[Shrimpt] encrypt click", err));
+    }
   });
   const rootEl = document.body || document.documentElement;
   rootEl.appendChild(host);
@@ -1001,14 +1727,18 @@ async function onFieldToolbarEncryptNow() {
     return;
   }
   const fk = fieldBinding.fieldKind || fieldKind(el);
-  const plain = getFieldPlain(el, fk);
+  const { plain, spec } = getEncryptReplaceSpec(el, fk);
   if (!plain.trim()) {
-    setFieldToolbarStatus("Nothing to encrypt.");
+    setFieldToolbarStatus(
+      fk === "contenteditable"
+        ? "Nothing to encrypt — select text in the field, or place the caret in a text run."
+        : "Nothing to encrypt."
+    );
     return;
   }
   const rid = settingsCache?.selectedRecipientContactId;
   if (!rid) {
-    setFieldToolbarStatus("Choose a specific contact on Them (not Anyone) in the UWU popup.");
+    setFieldToolbarStatus("Choose a specific contact on Them (not Anyone) in the page dock or popup.");
     return;
   }
   try {
@@ -1018,10 +1748,18 @@ async function onFieldToolbarEncryptNow() {
       plaintext: plain,
       recipientContactId: rid
     });
-    setFieldWrappedCipher(el, fk, wrapEnvelopeCompact(compact));
-    setFieldToolbarStatus("Replaced with ciphertext.");
+    if (!el.isConnected) {
+      setFieldToolbarStatus("Field was removed; canceled.");
+      return;
+    }
+    applyWrappedCiphertextWithSpec(el, fk, wrapEnvelopeCompact(compact), spec);
+    setFieldToolbarStatus(
+      spec.mode === "ce_all" || spec.mode === "value_all"
+        ? "Replaced whole field with ciphertext."
+        : "Replaced selection with ciphertext."
+    );
   } catch (e) {
-    setFieldToolbarStatus(e?.message === "LOCKED" ? "Locked — open the UWU popup and enter your unlock secret." : e.message || String(e));
+    setFieldToolbarStatus(e?.message === "LOCKED" ? "Locked — open the Shrimpt popup and enter your unlock secret." : e.message || String(e));
   } finally {
     setEncryptTooltipBusy(false);
   }
@@ -1041,7 +1779,7 @@ async function onLiveEncryptTooltipClick() {
   try {
     await runLiveFieldEncrypt(el, kind, plaintext);
   } catch (e) {
-    setFieldToolbarStatus(e?.message === "LOCKED" ? "Locked — open the UWU popup and enter your unlock secret." : e.message || String(e));
+    setFieldToolbarStatus(e?.message === "LOCKED" ? "Locked — open the Shrimpt popup and enter your unlock secret." : e.message || String(e));
   } finally {
     setEncryptTooltipBusy(false);
   }
@@ -1049,9 +1787,7 @@ async function onLiveEncryptTooltipClick() {
 
 function startButtonReplaceBinding(el, fk) {
   const kind = fk || fieldKind(el);
-  const encryptTooltipHost = createEncryptTooltipHost(el, () => {
-    onFieldToolbarEncryptNow();
-  });
+  const encryptTooltipHost = createEncryptTooltipHost(el, () => onFieldToolbarEncryptNow());
 
   const reposition = () => {
     if (!el.isConnected) return;
@@ -1099,8 +1835,8 @@ function startLiveFieldBinding(el, fk) {
   el.tabIndex = -1;
 
   const overlayHost = document.createElement("div");
-  overlayHost.className = "uwu-field-overlay-host";
-  overlayHost.setAttribute("data-uwu-chrome", "1");
+  overlayHost.className = "shrimpt-field-overlay-host";
+  overlayHost.setAttribute("data-shrimpt-chrome", "1");
   overlayHost.style.cssText =
     "position:fixed;z-index:2147483644;pointer-events:auto;box-sizing:border-box;";
   const shadow = overlayHost.attachShadow({ mode: "open" });
@@ -1113,7 +1849,7 @@ function startLiveFieldBinding(el, fk) {
         background: #1a1f2b; color: #e8ecf4; line-height: 1.4;
       }
     </style>
-    <textarea spellcheck="true" autocomplete="off" aria-label="UWU plaintext (not sent as plain text)"></textarea>
+    <textarea spellcheck="true" autocomplete="off" aria-label="Shrimpt plaintext (not sent as plain text)"></textarea>
   `;
   const mirror = shadow.querySelector("textarea");
 
@@ -1141,9 +1877,7 @@ function startLiveFieldBinding(el, fk) {
 
   document.documentElement.appendChild(overlayHost);
 
-  const encryptTooltipHost = createEncryptTooltipHost(el, () => {
-    onLiveEncryptTooltipClick();
-  });
+  const encryptTooltipHost = createEncryptTooltipHost(el, () => onLiveEncryptTooltipClick());
 
   const reposition = () => {
     if (!el.isConnected) return;
@@ -1208,7 +1942,7 @@ async function runLiveFieldEncrypt(targetEl, kind, plaintext) {
   }
   const rid = settingsCache?.selectedRecipientContactId;
   if (!rid) {
-    setFieldToolbarStatus("Choose Them (not Anyone) to encrypt live into the field.");
+    setFieldToolbarStatus("Choose Them (not Anyone) in the dock or popup to encrypt.");
     fieldBinding?.reposition?.();
     return;
   }
@@ -1330,13 +2064,21 @@ function request(type, payload = {}) {
   return new Promise((resolve, reject) => {
     chrome.runtime.sendMessage({ type, payload }, (response) => {
       if (chrome.runtime.lastError) {
-        reject(new Error(chrome.runtime.lastError.message));
+        const msg = chrome.runtime.lastError.message;
+        shrimptLog("msg", "sendMessage failed (service worker / channel)", { type, message: msg });
+        reject(new Error(msg));
         return;
       }
 
       if (!response?.ok) {
-        reject(new Error(response?.error || "Unknown extension error."));
+        const msg = response?.error || "Unknown extension error.";
+        shrimptLog("msg", "background returned error", { type, message: msg });
+        reject(new Error(msg));
         return;
+      }
+
+      if (type === MESSAGE_TYPES.DECRYPT_ENVELOPE || type === MESSAGE_TYPES.ENCRYPT_TEXT) {
+        shrimptLog("msg", "background ok", type);
       }
 
       resolve(response.result);

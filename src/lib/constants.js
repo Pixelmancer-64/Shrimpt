@@ -1,4 +1,4 @@
-/** Inline ciphertext markers: !uwu!<payload>!uwu! */
+/** Inline ciphertext wire format (unchanged for compatibility): !uwu!<payload>!uwu! */
 export const MARKER_PREFIX = "!uwu!";
 export const MARKER_SUFFIX = "!uwu!";
 
@@ -12,7 +12,8 @@ export const STORAGE_KEYS = {
 
 export const DEFAULT_SETTINGS = {
   autoDecrypt: true,
-  clickToReveal: true,
+  /** When true, page inline decrypt hides plaintext until the chip is clicked (privacy). */
+  clickToReveal: false,
   observerDebounceMs: 250,
   scanTextLimit: 120000,
   /** Contact row id from keyring; limits page scan/decrypt to ciphertext from that contact's profileId */
@@ -27,8 +28,13 @@ export const DEFAULT_SETTINGS = {
   uwuDockLeft: null,
   uwuDockTop: null,
   uwuHudLeft: null,
-  uwuHudTop: null
+  uwuHudTop: null,
+  /** Blue/red Custom Highlight overlays for text nodes the scanner considers (page HUD can toggle). */
+  showScanReadIndicators: true
 };
+
+/** Service worker → content scripts: session unlocked (pin verified). */
+export const MESSAGE_SESSION_UNLOCKED = "SHRIMPT_SESSION_UNLOCKED";
 
 /** Service worker `sendResponse` error codes the UI can branch on (see `throwCoded` in background). */
 export const ERROR_CODES = {

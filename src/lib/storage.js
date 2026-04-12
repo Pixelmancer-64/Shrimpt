@@ -14,17 +14,17 @@ export async function removeLocal(key) {
 }
 
 /**
- * @typedef {object} UwuKeyring
+ * @typedef {object} ShrimptKeyring
  * @property {object[]} profiles
  * @property {object[]} contacts
  */
 
-/** @returns {Promise<UwuKeyring>} */
+/** @returns {Promise<ShrimptKeyring>} */
 export async function getKeyring() {
   return (await getLocal(STORAGE_KEYS.KEYRING)) || { profiles: [], contacts: [] };
 }
 
-/** @param {UwuKeyring} keyring */
+/** @param {ShrimptKeyring} keyring */
 export async function saveKeyring(keyring) {
   await setLocal(STORAGE_KEYS.KEYRING, keyring);
 }
