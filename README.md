@@ -59,37 +59,37 @@ No build step required. This is a pure vanilla JavaScript extension.
 
 Set an unlock passphrase on first launch. This protects your keys on the device and never leaves the browser.
 
-<img src="docs/etp1.gif" alt="Creating a passphrase" width="600">
+<img src="docs/etp1.gif" alt="Creating a passphrase" width="400">
 
 ### 2. Unlock Shrimpt
 
 Enter the passphrase to unlock your keys for the browser session.
 
-<img src="docs/etp2.gif" alt="Unlocking Shrimpt" width="600">
+<img src="docs/etp2.gif" alt="Unlocking Shrimpt" width="400">
 
 ### 3. Create an identity and export it
 
 Generate a profile (RSA key pairs) and export the public key as a handshake blob to share with contacts.
 
-<img src="docs/etp3.gif" alt="Creating an identity and exporting" width="600">
+<img src="docs/etp3.gif" alt="Creating an identity and exporting" width="400">
 
 ### 4. Import a contact
 
 Import a contact's public key from a handshake blob or plain JSON.
 
-<img src="docs/etp4.gif" alt="Importing a contact" width="600">
+<img src="docs/etp4.gif" alt="Importing a contact" width="400">
 
 ### 5. Send an encrypted message from the popup
 
 Type a message in the popup, encrypt it for a contact, and copy the ciphertext to paste anywhere.
 
-<img src="docs/etp5.gif" alt="Encrypting from the popup" width="600">
+<img src="docs/etp5.gif" alt="Encrypting from the popup" width="400">
 
 ### 6. Send and read encrypted messages directly from the app
 
 Encrypt text in-place from any text field on a page, and see decrypted messages appear inline automatically.
 
-<img src="docs/etp6.gif" alt="In-page encrypt and decrypt" width="600">
+<img src="docs/etp6.gif" alt="In-page encrypt and decrypt" width="400">
 
 ## Tech Stack
 
