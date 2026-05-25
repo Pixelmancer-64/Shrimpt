@@ -1,6 +1,6 @@
-/** Inline ciphertext wire format (unchanged for compatibility): !uwu!<payload>!uwu! */
-export const MARKER_PREFIX = "!uwu!";
-export const MARKER_SUFFIX = "!uwu!";
+/** Inline ciphertext delimiters: !shpt!<base64-payload>!shpt! */
+export const MARKER_PREFIX = "!shpt!";
+export const MARKER_SUFFIX = "!shpt!";
 
 export const STORAGE_KEYS = {
   KEYRING: "keyring",
@@ -17,19 +17,7 @@ export const DEFAULT_SETTINGS = {
   observerDebounceMs: 250,
   scanTextLimit: 120000,
   /** Contact row id from keyring; limits page scan/decrypt to ciphertext from that contact's profileId */
-  selectedRecipientContactId: null,
-  /**
-   * Page form fields: live_overlay | button_replace (field tools always active; mode chosen in popup).
-   */
-  inputEncryptMode: "button_replace",
-  lastInputEncryptMode: "button_replace",
-  /** Saved pixel positions for draggable page overlays (null = use default corner). */
-  uwuDockLeft: null,
-  uwuDockTop: null,
-  uwuHudLeft: null,
-  uwuHudTop: null,
-  /** Blue/red Custom Highlight overlays for text nodes the scanner considers (page HUD can toggle). */
-  showScanReadIndicators: true
+  selectedRecipientContactId: null
 };
 
 /** Service worker → content scripts: session unlocked (pin verified). */

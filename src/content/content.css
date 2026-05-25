@@ -1,0 +1,20 @@
+/* Click-to-encrypt tooltip anchored near the linked field (position in JS) */
+.shrimpt-field-encrypt-tooltip-host {
+  pointer-events: auto;
+}
+
+/**
+ * Closed-shadow ciphertext chip: single light-DOM node ([data-shrimpt-compact] only).
+ * Chip visuals live inside the shadow tree.
+ */
+[data-shrimpt-compact] {
+  display: inline;
+  vertical-align: baseline;
+  margin: 0 0.08em;
+  line-height: inherit;
+  font-size: inherit;
+  max-width: 100%;
+  box-shadow: none;
+  padding: 0;
+  border-radius: 0;
+}

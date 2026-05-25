@@ -14,69 +14,10 @@
   vertical-align: baseline;
 }
 
-/* Chip — pending (decrypt / locked) and open (unverified); other states drop the button */
-.shrimpt-envelope-button {
-  appearance: none;
-  -webkit-appearance: none;
-  display: inline-block;
-  vertical-align: baseline;
-  margin: 0;
-  border: 1px solid transparent;
-  border-radius: 999px;
-  padding: 0.12em 0.55em;
-  font-size: max(0.82em, 11px);
-  line-height: 1.35;
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-  font-weight: 600;
-  cursor: pointer;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-  white-space: nowrap;
-  transition: filter 0.12s ease, box-shadow 0.12s ease;
-}
-
-.shrimpt-envelope-button--pending {
-  background: linear-gradient(180deg, #1e4a7a 0%, #0f2f5c 100%);
-  border-color: #3b82f6;
-  color: #e8f4ff;
-}
-
-.shrimpt-envelope-button--pending:hover {
-  filter: brightness(1.08);
-}
-
-.shrimpt-envelope-button--open {
-  background: linear-gradient(180deg, #166534 0%, #0d3d22 100%);
-  border-color: #22c55e;
-  color: #ecfdf5;
-}
-
-.shrimpt-envelope-button--open:hover {
-  filter: brightness(1.08);
-}
-
-.shrimpt-envelope-button--unreadable {
-  background: linear-gradient(180deg, #9a3412 0%, #7c2d12 100%);
-  border-color: #fb923c;
-  color: #fff7ed;
-}
-
-.shrimpt-envelope-button--unreadable:hover {
-  filter: brightness(1.06);
-}
-
-.shrimpt-envelope-button:focus-visible {
-  outline: 2px solid #38bdf8;
-  outline-offset: 2px;
-}
-
-.shrimpt-envelope-button--unreadable:focus-visible {
-  outline-color: #fdba74;
-}
-
 .shrimpt-envelope-reveal {
   display: inline;
   vertical-align: baseline;
-  margin-left: 0.28em;
+  margin: 0;
   padding: 0;
   border: none;
   border-radius: 0;

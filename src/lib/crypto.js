@@ -3,9 +3,9 @@ import { arrayBufferToBase64, base64ToArrayBuffer, fromUtf8Bytes, sha256Hex, toU
 const RSA_OAEP_CIPHERTEXT_BYTES = 256;
 const RSA_PSS_SIGNATURE_BYTES = 256;
 const IV_BYTES = 12;
-/** Legacy: IV + single RSA-OAEP wrapped AES key (recipient only). */
-const LEGACY_ENVELOPE_PREFIX_BYTES = IV_BYTES + RSA_OAEP_CIPHERTEXT_BYTES;
-/** Current: IV + RSA wrap for recipient + RSA wrap for sender (so senders can read their own ciphertext). */
+/** End offset of the first RSA-OAEP block (IV + recipient-wrapped AES key). */
+const RECIPIENT_RSA_WRAP_END = IV_BYTES + RSA_OAEP_CIPHERTEXT_BYTES;
+/** IV + RSA wrap for recipient + RSA wrap for sender (both can unwrap the same AES key). */
 const DUAL_ENVELOPE_PREFIX_BYTES = IV_BYTES + 2 * RSA_OAEP_CIPHERTEXT_BYTES;
 
 const RSA_ENCRYPTION_ALGO = {
@@ -171,8 +171,8 @@ export async function encryptTextForRecipient({
 export function parseCompactEnvelope(base64Envelope) {
   const raw = base64ToArrayBuffer(base64Envelope);
   const view = new Uint8Array(raw);
-  const minLegacy = LEGACY_ENVELOPE_PREFIX_BYTES + 16 + RSA_PSS_SIGNATURE_BYTES;
-  if (view.length < minLegacy) {
+  const minDual = DUAL_ENVELOPE_PREFIX_BYTES + 16 + RSA_PSS_SIGNATURE_BYTES;
+  if (view.length < minDual) {
     throw new Error("Empty or truncated envelope.");
   }
   return raw;
@@ -206,8 +206,8 @@ function parseValidatedInner(plaintextBuffer) {
 
 async function decryptEnvelopeBuffer(buffer, recipientEncryptionPrivateJwk, signingPublicKeyResolver) {
   const view = new Uint8Array(buffer);
-  const minLegacy = LEGACY_ENVELOPE_PREFIX_BYTES + 16 + RSA_PSS_SIGNATURE_BYTES;
-  if (view.length < minLegacy) {
+  const minDual = DUAL_ENVELOPE_PREFIX_BYTES + 16 + RSA_PSS_SIGNATURE_BYTES;
+  if (view.length < minDual) {
     throw new Error("Truncated envelope.");
   }
 
@@ -234,7 +234,9 @@ async function decryptEnvelopeBuffer(buffer, recipientEncryptionPrivateJwk, sign
   };
 
   const dualMinCt = 16;
-  const hasDualLayout = sigStart >= DUAL_ENVELOPE_PREFIX_BYTES + dualMinCt;
+  if (sigStart < DUAL_ENVELOPE_PREFIX_BYTES + dualMinCt) {
+    throw new Error("Truncated envelope.");
+  }
 
   const tryDecryptAt = async (rawAesKey, aesCtStart) => {
     if (!rawAesKey || sigStart < aesCtStart + dualMinCt) return null;
@@ -248,15 +250,12 @@ async function decryptEnvelopeBuffer(buffer, recipientEncryptionPrivateJwk, sign
     }
   };
 
-  const rawFirst = await tryRsaUnwrap(view, IV_BYTES, LEGACY_ENVELOPE_PREFIX_BYTES, privateKey);
-  const rawSecond = hasDualLayout
-    ? await tryRsaUnwrap(view, LEGACY_ENVELOPE_PREFIX_BYTES, DUAL_ENVELOPE_PREFIX_BYTES, privateKey)
-    : null;
+  const rawRecipient = await tryRsaUnwrap(view, IV_BYTES, RECIPIENT_RSA_WRAP_END, privateKey);
+  const rawSender = await tryRsaUnwrap(view, RECIPIENT_RSA_WRAP_END, DUAL_ENVELOPE_PREFIX_BYTES, privateKey);
 
-  let found =
-    (await tryDecryptAt(rawFirst, LEGACY_ENVELOPE_PREFIX_BYTES)) ||
-    (hasDualLayout ? await tryDecryptAt(rawFirst, DUAL_ENVELOPE_PREFIX_BYTES) : null) ||
-    (hasDualLayout ? await tryDecryptAt(rawSecond, DUAL_ENVELOPE_PREFIX_BYTES) : null);
+  const found =
+    (await tryDecryptAt(rawRecipient, DUAL_ENVELOPE_PREFIX_BYTES)) ||
+    (await tryDecryptAt(rawSender, DUAL_ENVELOPE_PREFIX_BYTES));
 
   if (!found) {
     throw new Error("Cannot decrypt envelope.");

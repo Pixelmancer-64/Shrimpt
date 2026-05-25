@@ -34,10 +34,8 @@ const els = {
   autoDecrypt: document.getElementById("autoDecrypt"),
   clickToReveal: document.getElementById("clickToReveal"),
   clickToRevealRow: document.getElementById("clickToRevealRow"),
-  showScanReadIndicators: document.getElementById("showScanReadIndicators"),
   observerDebounceMs: document.getElementById("observerDebounceMs"),
   settingsStatus: document.getElementById("settingsStatus"),
-  inputEncryptMode: document.getElementById("inputEncryptMode"),
   whoMeDetail: document.getElementById("whoMeDetail"),
   whoThemDetail: document.getElementById("whoThemDetail"),
   ciphertextInput: document.getElementById("ciphertextInput"),
@@ -325,8 +323,6 @@ function bindEvents() {
     persistSettings();
   });
   els.clickToReveal.addEventListener("change", () => persistSettings());
-  els.showScanReadIndicators?.addEventListener("change", () => persistSettings());
-  els.inputEncryptMode?.addEventListener("change", () => persistSettings());
   els.observerDebounceMs.addEventListener("input", schedulePersistSettings);
   els.observerDebounceMs.addEventListener("change", () => persistSettings());
   els.exportFullBackupBtn?.addEventListener("click", onExportFullBackup);
@@ -408,14 +404,7 @@ async function loadSettingsUi() {
   const settings = await request(MESSAGE_TYPES.GET_SETTINGS);
   els.autoDecrypt.checked = Boolean(settings.autoDecrypt);
   els.clickToReveal.checked = Boolean(settings.clickToReveal);
-  if (els.showScanReadIndicators) {
-    els.showScanReadIndicators.checked = settings.showScanReadIndicators !== false;
-  }
   els.observerDebounceMs.value = settings.observerDebounceMs;
-  if (els.inputEncryptMode) {
-    const m = settings.inputEncryptMode;
-    els.inputEncryptMode.value = m === "live_overlay" ? "live_overlay" : "button_replace";
-  }
   updateClickToRevealRowVisibility();
 }
 
@@ -430,14 +419,10 @@ function schedulePersistSettings() {
 async function persistSettings() {
   if (!els.settingsStatus) return;
   try {
-    const mode = els.inputEncryptMode?.value === "live_overlay" ? "live_overlay" : "button_replace";
     const payload = {
       autoDecrypt: els.autoDecrypt.checked,
       clickToReveal: els.clickToReveal.checked,
-      showScanReadIndicators: els.showScanReadIndicators ? els.showScanReadIndicators.checked : true,
-      observerDebounceMs: Number(els.observerDebounceMs.value) || 250,
-      inputEncryptMode: mode,
-      lastInputEncryptMode: mode
+      observerDebounceMs: Number(els.observerDebounceMs.value) || 250
     };
     await request(MESSAGE_TYPES.UPDATE_SETTINGS, payload);
     els.settingsStatus.textContent = "Saved.";
@@ -756,7 +741,7 @@ async function onDecryptFromPopup() {
   const { payload, note } = extractCompactPayload(els.ciphertextInput.value);
   if (!payload) {
     els.decryptStatus.textContent =
-      "No valid payload. Paste wrapped !uwu!…!uwu! text, or a single base64 envelope string.";
+      "No valid payload. Paste wrapped !shpt!…!shpt! text, or a single base64 envelope string.";
     els.decryptStatus.classList.add("is-error");
     return;
   }

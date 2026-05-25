@@ -174,7 +174,7 @@
                 <label class="label" for="ciphertextOutput">Ciphertext</label>
                 <button id="copyCipherBtn" type="button" class="btn btn-ghost btn-small">Copy</button>
               </div>
-              <textarea id="ciphertextOutput" class="input input-textarea input-mono" readonly rows="3" placeholder="!uwu!…!uwu!"></textarea>
+              <textarea id="ciphertextOutput" class="input input-textarea input-mono" readonly rows="3" placeholder="!shpt!…!shpt!"></textarea>
             </div>
             <p id="encryptStatus" class="status status-in-card" role="status"></p>
           </div>
@@ -205,8 +205,8 @@
                 id="ciphertextInput"
                 class="input input-textarea input-mono"
                 rows="4"
-                placeholder="!uwu!…!uwu!"
-                title="Wrapped !uwu!…!uwu! or compact payload only"
+                placeholder="!shpt!…!shpt!"
+                title="Wrapped !shpt!…!shpt! or compact payload only"
               ></textarea>
             </div>
             <button id="decryptBtn" type="button" class="btn btn-secondary">Decrypt</button>
@@ -432,43 +432,13 @@
               <input id="clickToReveal" type="checkbox" />
               <span>On pages, hide decrypted text until you click the chip</span>
             </label>
-            <label class="check-row">
-              <input id="showScanReadIndicators" type="checkbox" />
-              <span>On pages, show scanner highlights and yellow tint on text fields (floating Shrimpt panel can toggle this too)</span>
-            </label>
             <div class="field-group field-group-tight">
               <label class="label" for="observerDebounceMs">Scan debounce (ms)</label>
               <input id="observerDebounceMs" class="input" type="number" min="50" step="50" title="Delay after DOM changes before rescanning" />
             </div>
           </div>
 
-          <div class="section-card">
-            <div class="section-card-head">
-              <h2 class="title-with-icon">
-                <span class="title-icon-wrap title-icon-wrap-warm" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                    <path
-                      d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10"
-                      stroke="currentColor"
-                      stroke-width="1.5"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                    />
-                  </svg>
-                </span>
-                <span class="title-text">Encrypt from fields</span>
-              </h2>
-              <p class="section-card-hint">Page dock + tooltip on focused inputs (always on). <strong>Esc</strong> clears focus binding. Uses <strong>Them</strong>.</p>
-            </div>
-            <div class="field-group field-group-tight">
-              <label class="label" for="inputEncryptMode">Mode</label>
-              <select id="inputEncryptMode" class="input">
-                <option value="live_overlay">Overlay — type in overlay, paste into field</option>
-                <option value="button_replace">In place — type in field, replace via button</option>
-              </select>
-            </div>
-            <p id="settingsStatus" class="status status-in-card settings-autosave-status" role="status"></p>
-          </div>
+          <p id="settingsStatus" class="status status-in-card settings-autosave-status" role="status"></p>
 
           <div class="section-card section-card-backup">
             <div class="section-card-head">

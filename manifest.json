@@ -23,7 +23,7 @@
     {
       "matches": ["<all_urls>"],
       "js": ["./src/content/content-script.js"],
-      "css": ["./src/content/overlay.css"],
+      "css": ["./src/content/content.css"],
       "run_at": "document_idle"
     }
   ],

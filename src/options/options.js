@@ -3,7 +3,6 @@ import { ERROR_CODES, MESSAGE_TYPES } from "../lib/constants.js";
 const autoDecrypt = document.getElementById("autoDecrypt");
 const clickToReveal = document.getElementById("clickToReveal");
 const clickToRevealRow = document.getElementById("clickToRevealRow");
-const showScanReadIndicators = document.getElementById("showScanReadIndicators");
 const observerDebounceMs = document.getElementById("observerDebounceMs");
 const saveBtn = document.getElementById("saveBtn");
 const status = document.getElementById("status");
@@ -107,9 +106,6 @@ async function showMainOptions() {
   const settings = await request(MESSAGE_TYPES.GET_SETTINGS);
   autoDecrypt.checked = Boolean(settings.autoDecrypt);
   clickToReveal.checked = Boolean(settings.clickToReveal);
-  if (showScanReadIndicators) {
-    showScanReadIndicators.checked = settings.showScanReadIndicators !== false;
-  }
   observerDebounceMs.value = settings.observerDebounceMs;
   updateClickToRevealRowVisibility();
 }
@@ -120,7 +116,6 @@ saveBtn.addEventListener("click", async () => {
     await request(MESSAGE_TYPES.UPDATE_SETTINGS, {
       autoDecrypt: autoDecrypt.checked,
       clickToReveal: clickToReveal.checked,
-      showScanReadIndicators: showScanReadIndicators ? showScanReadIndicators.checked : true,
       observerDebounceMs: Number(observerDebounceMs.value) || 250
     });
     status.textContent = "Saved.";
