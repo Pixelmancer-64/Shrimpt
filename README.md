@@ -59,37 +59,37 @@ No build step required. This is a pure vanilla JavaScript extension.
 
 Set an unlock passphrase on first launch. This protects your keys on the device and never leaves the browser.
 
-![Creating a passphrase](https://raw.githubusercontent.com/Pixelmancer-64/Shrimpt/master/docs/etp1.gif)
+![Creating a passphrase](docs/etp1.gif)
 
 ### 2. Unlock Shrimpt
 
 Enter the passphrase to unlock your keys for the browser session.
 
-![Unlocking Shrimpt](https://raw.githubusercontent.com/Pixelmancer-64/Shrimpt/master/docs/etp2.gif)
+![Unlocking Shrimpt](docs/etp2.gif)
 
 ### 3. Create an identity and export it
 
 Generate a profile (RSA key pairs) and export the public key as a handshake blob to share with contacts.
 
-![Creating an identity and exporting](https://raw.githubusercontent.com/Pixelmancer-64/Shrimpt/master/docs/etp3.gif)
+![Creating an identity and exporting](docs/etp3.gif)
 
 ### 4. Import a contact
 
 Import a contact's public key from a handshake blob or plain JSON.
 
-![Importing a contact](https://raw.githubusercontent.com/Pixelmancer-64/Shrimpt/master/docs/etp4.gif)
+![Importing a contact](docs/etp4.gif)
 
 ### 5. Send an encrypted message from the popup
 
 Type a message in the popup, encrypt it for a contact, and copy the ciphertext to paste anywhere.
 
-![Encrypting from the popup](https://raw.githubusercontent.com/Pixelmancer-64/Shrimpt/master/docs/etp5.gif)
+![Encrypting from the popup](docs/etp5.gif)
 
 ### 6. Send and read encrypted messages directly from the app
 
 Encrypt text in-place from any text field on a page, and see decrypted messages appear inline automatically.
 
-![In-page encrypt and decrypt](https://raw.githubusercontent.com/Pixelmancer-64/Shrimpt/master/docs/etp6.gif)
+![In-page encrypt and decrypt](docs/etp6.gif)
 
 ## Tech Stack
 
