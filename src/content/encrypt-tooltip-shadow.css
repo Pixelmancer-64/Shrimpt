@@ -20,17 +20,15 @@
   --font-ui: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
-@media (prefers-color-scheme: dark) {
-  :host {
-    --shrimp-pink-900: #4a2f32;
-    --shrimp-pink-100: #e8c2c6;
-    --shrimp-pink-500: #d1939a;
+:host([data-theme="dark"]) {
+  --shrimp-pink-900: #4a2f32;
+  --shrimp-pink-100: #e8c2c6;
+  --shrimp-pink-500: #d1939a;
 
-    --bw-accent: var(--shrimp-pink-500);
-    --bw-accent-hover: var(--shrimp-pink-100);
-    --btn-primary-fg: #ffffff;
-    --bw-focus: color-mix(in srgb, var(--shrimp-pink-500) 45%, transparent);
-  }
+  --bw-accent: var(--shrimp-pink-500);
+  --bw-accent-hover: var(--shrimp-pink-100);
+  --btn-primary-fg: #ffffff;
+  --bw-focus: color-mix(in srgb, var(--shrimp-pink-500) 45%, transparent);
 }
 
 button.tip {

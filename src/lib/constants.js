@@ -11,9 +11,9 @@ export const STORAGE_KEYS = {
 };
 
 export const DEFAULT_SETTINGS = {
+  /** "system" follows OS; "light" / "dark" override */
+  theme: "system",
   autoDecrypt: true,
-  /** When true, page inline decrypt hides plaintext until the chip is clicked (privacy). */
-  clickToReveal: false,
   observerDebounceMs: 250,
   scanTextLimit: 120000,
   /** Contact row id from keyring; limits page scan/decrypt to ciphertext from that contact's profileId */

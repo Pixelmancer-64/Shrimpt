@@ -14,12 +14,45 @@ const STORAGE_KEYS = {
 const SESSION_UNLOCK_KEY = "shrimptUnlocked";
 
 const DEFAULT_SETTINGS = {
+  theme: "system",
   autoDecrypt: true,
-  clickToReveal: false,
   observerDebounceMs: 250,
   scanTextLimit: 120000,
   selectedRecipientContactId: null
 };
+
+function resolveUiTheme(mode) {
+  if (mode === "dark") return "dark";
+  if (mode === "light") return "light";
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+function applyThemeToElement(el, mode) {
+  if (!el) return;
+  if (resolveUiTheme(mode) === "dark") {
+    el.dataset.theme = "dark";
+  } else {
+    delete el.dataset.theme;
+  }
+}
+
+let tooltipThemeMediaUnbind = null;
+
+function syncTooltipTheme() {
+  applyThemeToElement(fieldBinding?.encryptTooltipHost, settingsCache?.theme ?? "system");
+}
+
+function bindTooltipThemeMediaListener() {
+  if (tooltipThemeMediaUnbind) {
+    tooltipThemeMediaUnbind();
+    tooltipThemeMediaUnbind = null;
+  }
+  if ((settingsCache?.theme ?? "system") !== "system") return;
+  const mq = window.matchMedia("(prefers-color-scheme: dark)");
+  const handler = () => syncTooltipTheme();
+  mq.addEventListener("change", handler);
+  tooltipThemeMediaUnbind = () => mq.removeEventListener("change", handler);
+}
 
 /** Must match MESSAGE_SESSION_UNLOCKED in src/lib/constants.js */
 const MESSAGE_SESSION_UNLOCKED = "SHRIMPT_SESSION_UNLOCKED";
@@ -112,7 +145,6 @@ async function bootstrap() {
     href: typeof location !== "undefined" ? location.href : "",
     settingsFallback,
     autoDecrypt: settingsCache?.autoDecrypt,
-    clickToReveal: settingsCache?.clickToReveal,
     scanTextLimit: settingsCache?.scanTextLimit,
     observerDebounceMs: settingsCache?.observerDebounceMs,
     runtimeId: typeof chrome !== "undefined" && chrome.runtime?.id ? chrome.runtime.id : null
@@ -145,10 +177,14 @@ async function bootstrap() {
   scheduleLateRescans();
   startFieldEncryptFocusCapture();
   scheduleFieldAutoBind();
+  syncTooltipTheme();
+  bindTooltipThemeMediaListener();
 }
 
 async function onIdentityOrConversationStorageChanged() {
   settingsCache = await request(MESSAGE_TYPES.GET_SETTINGS);
+  syncTooltipTheme();
+  bindTooltipThemeMediaListener();
   scheduleFieldAutoBind();
   const wrappers = [...document.querySelectorAll("[data-shrimpt-compact]")];
   shrimptLog("boot", "identity/settings storage changed; rebuilding envelopes", { count: wrappers.length });
@@ -998,6 +1034,7 @@ async function createEncryptTooltipHost(targetEl, onEncryptClick) {
     }
   });
   host.addEventListener("mousedown", (e) => { e.preventDefault(); });
+  applyThemeToElement(host, settingsCache?.theme ?? "system");
   const rootEl = document.body || document.documentElement;
   rootEl.appendChild(host);
   requestAnimationFrame(() => {

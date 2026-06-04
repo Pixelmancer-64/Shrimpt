@@ -4,93 +4,141 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Shrimpt — Settings</title>
+    <link rel="stylesheet" href="../popup/popup.css" />
     <style>
+      html {
+        width: auto;
+        height: auto;
+        max-height: none;
+        overflow: auto;
+      }
+
       body {
-        font-family: system-ui, sans-serif;
+        width: auto;
         max-width: 480px;
+        height: auto;
+        max-height: none;
         margin: 24px auto;
-        padding: 0 16px;
-        line-height: 1.45;
+        padding: 0 16px 32px;
+        overflow: visible;
       }
+
+      .options-shell h1 {
+        margin: 0 0 20px;
+        font-size: 20px;
+        font-weight: 700;
+        color: var(--bw-text);
+      }
+
+      .options-card {
+        padding: 16px;
+        border: 1px solid var(--bw-border);
+        border-radius: var(--radius);
+        margin-bottom: 16px;
+      }
+
+      .options-card label {
+        display: block;
+        margin-top: 12px;
+        font-weight: 600;
+        color: var(--bw-text);
+      }
+
+      .options-card label:first-child {
+        margin-top: 0;
+      }
+
+      .options-card input[type="number"],
+      .options-card select {
+        width: 100%;
+        max-width: 280px;
+        margin-top: 4px;
+      }
+
+      .options-card .check-row {
+        margin-top: 12px;
+        margin-bottom: 0;
+      }
+
       .pin-gate {
-        border: 1px solid #ccc;
+        border: 1px solid var(--bw-border);
         padding: 20px;
-        border-radius: 8px;
+        border-radius: var(--radius);
         margin-bottom: 24px;
+        background: transparent;
       }
+
       .pin-gate[hidden],
       #main-options[hidden] {
         display: none !important;
       }
-      label {
-        display: block;
-        margin-top: 12px;
-        font-weight: 600;
+
+      #pin-gate-title {
+        margin: 0 0 8px;
+        color: var(--bw-text);
       }
-      input {
-        width: 100%;
-        max-width: 280px;
-        padding: 8px;
-        margin-top: 4px;
-        box-sizing: border-box;
+
+      #pin-gate-desc {
+        margin: 0 0 12px;
+        color: var(--bw-muted);
+        font-size: 13px;
       }
-      button {
+
+      #saveBtn {
         margin-top: 16px;
-        padding: 8px 16px;
-        cursor: pointer;
       }
+
       #pinGateStatus,
       #status {
         margin-top: 12px;
         min-height: 1.2em;
       }
-      .is-error {
-        color: #b91c1c;
-      }
     </style>
   </head>
   <body>
-    <h1>Shrimpt — Settings</h1>
+    <div class="options-shell">
+      <h1>Shrimpt — Settings</h1>
 
-    <div id="pin-gate" class="pin-gate" hidden>
-      <h2 id="pin-gate-title">Unlock</h2>
-      <p id="pin-gate-desc">A strong secret protects your keys for this browser session.</p>
-      <div id="pin-create-fields">
-        <label for="pinCreatePin">Secret</label>
-        <input id="pinCreatePin" type="password" minlength="12" maxlength="256" autocomplete="new-password" />
-        <label for="pinCreateConfirm">Confirm secret</label>
-        <input id="pinCreateConfirm" type="password" minlength="12" maxlength="256" autocomplete="new-password" />
-        <button type="button" id="pinCreateBtn">Save secret</button>
+      <div id="pin-gate" class="pin-gate" hidden>
+        <h2 id="pin-gate-title">Unlock</h2>
+        <p id="pin-gate-desc">A strong secret protects your keys for this browser session.</p>
+        <div id="pin-create-fields">
+          <label for="pinCreatePin">Secret</label>
+          <input id="pinCreatePin" class="input" type="password" minlength="12" maxlength="256" autocomplete="new-password" />
+          <label for="pinCreateConfirm">Confirm secret</label>
+          <input id="pinCreateConfirm" class="input" type="password" minlength="12" maxlength="256" autocomplete="new-password" />
+          <button type="button" id="pinCreateBtn" class="btn btn-primary">Save secret</button>
+        </div>
+        <div id="pin-unlock-fields" hidden>
+          <label for="pinUnlockInput">Secret</label>
+          <input id="pinUnlockInput" class="input" type="password" maxlength="256" autocomplete="current-password" />
+          <button type="button" id="pinUnlockBtn" class="btn btn-primary">Unlock</button>
+        </div>
+        <p id="pinGateStatus" class="status" role="status"></p>
       </div>
-      <div id="pin-unlock-fields" hidden>
-        <label for="pinUnlockInput">Secret</label>
-        <input id="pinUnlockInput" type="password" maxlength="256" autocomplete="current-password" />
-        <button type="button" id="pinUnlockBtn">Unlock</button>
-      </div>
-      <p id="pinGateStatus" role="status"></p>
+
+      <main id="main-options" hidden>
+        <div class="options-card">
+          <label for="themeSelect">Appearance</label>
+          <select id="themeSelect" class="input">
+            <option value="system">System</option>
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+          </select>
+
+          <label class="check-row">
+            <input id="autoDecrypt" type="checkbox" />
+            <span>Auto-decrypt on pages</span>
+          </label>
+
+          <label for="observerDebounceMs">Scan debounce (ms)</label>
+          <input id="observerDebounceMs" class="input" type="number" min="50" step="50" />
+        </div>
+
+        <button id="saveBtn" type="button" class="btn btn-primary">Save</button>
+        <div id="status" class="status" role="status"></div>
+      </main>
     </div>
-
-    <main id="main-options" hidden>
-      <label>
-        <input id="autoDecrypt" type="checkbox" />
-        Auto decrypt detected messages
-      </label>
-      <br />
-      <span id="clickToRevealRow">
-        <label>
-          <input id="clickToReveal" type="checkbox" />
-          On pages, hide decrypted text until chip click
-        </label>
-        <br />
-      </span>
-      <label>
-        Observer debounce (ms)
-        <input id="observerDebounceMs" type="number" min="50" step="50" />
-      </label>
-      <br />
-      <button id="saveBtn">Save</button>
-      <div id="status"></div>
-    </main>
 
     <script type="module" src="./options.js"></script>
   </body>

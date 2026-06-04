@@ -1,9 +1,13 @@
 import { ERROR_CODES, MESSAGE_TYPES } from "../lib/constants.js";
 import { findEnvelopeMatches, unwrapEnvelopeString, wrapEnvelope } from "../lib/encoding.js";
 import { MAX_SECRET_LENGTH, MIN_SECRET_LENGTH, normalizeSecret } from "../lib/pin.js";
+import { applyTheme, bindThemeWatcher, normalizeThemeMode } from "../lib/theme.js";
+
+applyTheme(document.documentElement, "system");
 
 let profilesCache = [];
 let contactsCache = [];
+let unbindThemeWatcher = () => {};
 
 const popupBoot = document.getElementById("popup-boot");
 const pinGate = document.getElementById("pin-gate");
@@ -13,8 +17,6 @@ const pinUnlockBtn = document.getElementById("pinUnlockBtn");
 
 const els = {
   tabs: document.querySelectorAll(".tab"),
-  contextBarHint: document.getElementById("contextBarHint"),
-  contextBarHintWrap: document.getElementById("contextBarHintWrap"),
   profileName: document.getElementById("profileName"),
   generateProfileBtn: document.getElementById("generateProfileBtn"),
   generateStatus: document.getElementById("generateStatus"),
@@ -32,9 +34,7 @@ const els = {
   exportOutput: document.getElementById("exportOutput"),
   copyExportBtn: document.getElementById("copyExportBtn"),
   autoDecrypt: document.getElementById("autoDecrypt"),
-  clickToReveal: document.getElementById("clickToReveal"),
-  clickToRevealRow: document.getElementById("clickToRevealRow"),
-  observerDebounceMs: document.getElementById("observerDebounceMs"),
+  themeSelect: document.getElementById("themeSelect"),
   settingsStatus: document.getElementById("settingsStatus"),
   whoMeDetail: document.getElementById("whoMeDetail"),
   whoThemDetail: document.getElementById("whoThemDetail"),
@@ -55,12 +55,83 @@ const els = {
   contactImportStatus: document.getElementById("contactImportStatus")
 };
 
-init().catch(console.error);
+function loadingIndicatorHtml(label = "Working") {
+  return `<span class="loading-indicator" role="status"><span class="loading-indicator-spinner" aria-hidden="true"></span><span class="loading-indicator-text">${label}<span class="loading-indicator-dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span></span></span>`;
+}
 
-/** Debounce for scan interval numeric field — avoids spamming the background worker. */
-let settingsPersistTimer = null;
+function setStatusLoading(el, label = "Working") {
+  if (!el) return;
+  el.classList.remove("is-error");
+  el.innerHTML = loadingIndicatorHtml(label);
+}
+
+const PASSWORD_TOGGLE_EYE_HTML = `
+  <svg class="icon-eye-off" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path
+      d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88"
+      stroke="currentColor"
+      stroke-width="1.5"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
+  </svg>
+  <svg class="icon-eye-on" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path
+      d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z"
+      stroke="currentColor"
+      stroke-width="1.5"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
+    <path
+      d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+      stroke="currentColor"
+      stroke-width="1.5"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
+  </svg>`;
+
+function initPasswordToggleButtons() {
+  document.querySelectorAll("[data-password-for]").forEach((btn) => {
+    if (btn.querySelector(".icon-eye-off")) return;
+    btn.classList.add("btn-toggle-password");
+    btn.innerHTML = PASSWORD_TOGGLE_EYE_HTML;
+    btn.setAttribute("aria-label", "Show passphrase");
+    btn.setAttribute("aria-pressed", "false");
+  });
+}
+
+function wrapPasswordInputs() {
+  document.querySelectorAll("[data-password-for]").forEach((btn) => {
+    const id = btn.dataset.passwordFor;
+    const input = id && document.getElementById(id);
+    if (!input || input.closest(".input-password-wrap")) return;
+
+    const wrap = document.createElement("div");
+    wrap.className = "input-password-wrap";
+    input.classList.add("input-with-password-toggle");
+    input.parentNode.insertBefore(wrap, input);
+    wrap.appendChild(input);
+    wrap.appendChild(btn);
+
+    const labelRow = wrap.previousElementSibling;
+    if (labelRow?.classList.contains("label-row") && labelRow.querySelector("[data-password-for]") === null) {
+      labelRow.classList.add("label-row-compact");
+    }
+  });
+}
+
+function setPasswordToggleRevealed(btn, revealed) {
+  btn.classList.toggle("is-revealed", revealed);
+  btn.setAttribute("aria-pressed", revealed ? "true" : "false");
+  btn.setAttribute("aria-label", revealed ? "Hide passphrase" : "Show passphrase");
+}
 
 function wirePasswordToggles() {
+  initPasswordToggleButtons();
+  wrapPasswordInputs();
+
   document.addEventListener("click", (e) => {
     const btn = e.target.closest("[data-password-for]");
     if (!btn) return;
@@ -69,8 +140,7 @@ function wirePasswordToggles() {
     if (!input || (input.type !== "password" && input.type !== "text")) return;
     const revealing = input.type === "password";
     input.type = revealing ? "text" : "password";
-    btn.textContent = revealing ? "Hide" : "Show";
-    btn.setAttribute("aria-pressed", revealing ? "true" : "false");
+    setPasswordToggleRevealed(btn, revealing);
   });
 }
 
@@ -84,28 +154,46 @@ function setPinBusy(on) {
   if (pinUnlockBtn) pinUnlockBtn.disabled = on;
 }
 
+function showInitFailure(message) {
+  if (popupBoot) popupBoot.hidden = true;
+  pinGate.hidden = false;
+  mainShell.hidden = true;
+  setPinGateView("error");
+  document.getElementById("pin-gate-title").textContent = "Can’t connect";
+  const desc = document.getElementById("pin-gate-desc");
+  desc.hidden = false;
+  desc.textContent = "Close this popup and try the toolbar icon again.";
+  const st = document.getElementById("pinGateStatus");
+  st.textContent = message;
+  st.classList.add("is-error");
+}
+
 async function init() {
-  wirePasswordToggles();
-  bindTabs();
-  bindPinEvents();
+  try {
+    wirePasswordToggles();
+    bindTabs();
+    bindPinEvents();
+  } catch (e) {
+    console.error(e);
+    showInitFailure(e?.message || String(e));
+    return;
+  }
+
   let status;
   try {
     status = await request(MESSAGE_TYPES.PIN_STATUS);
   } catch (e) {
     console.error(e);
-    if (popupBoot) popupBoot.hidden = true;
-    pinGate.hidden = false;
-    mainShell.hidden = true;
-    document.getElementById("pin-create-fields").hidden = true;
-    document.getElementById("pin-unlock-fields").hidden = true;
-    document.getElementById("pin-gate-title").textContent = "Can’t connect";
-    document.getElementById("pin-gate-desc").textContent =
-      "The extension didn’t respond. Close this popup and try the toolbar icon again.";
-    const st = document.getElementById("pinGateStatus");
-    st.textContent = e?.message || String(e);
-    st.classList.add("is-error");
+    showInitFailure(e?.message || String(e));
     return;
   }
+
+  try {
+    applyThemeFromSettings(await request(MESSAGE_TYPES.GET_SETTINGS));
+  } catch (_e) {
+    applyTheme(document.documentElement, "system");
+  }
+
   if (popupBoot) popupBoot.hidden = true;
   if (!status.hasSecret) {
     showPinCreate();
@@ -130,6 +218,11 @@ function bindPinEvents() {
   }
   document.getElementById("pinUnlockInput")?.addEventListener("keydown", (e) => {
     if (e.key === "Enter") onUnlockPin();
+  });
+  document.getElementById("pinForgotBtn")?.addEventListener("click", showPinForgotScreen);
+  document.getElementById("pinForgotBackBtn")?.addEventListener("click", showPinUnlock);
+  document.getElementById("pin-forgot-screen")?.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") showPinUnlock();
   });
   document.getElementById("pinCreatePin")?.addEventListener("keydown", (e) => {
     if (e.key !== "Enter") return;
@@ -221,7 +314,7 @@ async function onCreatePin() {
   const pin = document.getElementById("pinCreatePin").value;
   const pinConfirm = document.getElementById("pinCreateConfirm").value;
   setPinBusy(true);
-  statusEl.textContent = "Working…";
+  setStatusLoading(statusEl, "Working");
   try {
     await request(MESSAGE_TYPES.SET_PIN, { pin, pinConfirm });
     showMainApp();
@@ -240,7 +333,7 @@ async function onUnlockPin() {
   statusEl.classList.remove("is-error");
   const pin = document.getElementById("pinUnlockInput").value;
   setPinBusy(true);
-  statusEl.textContent = "Working…";
+  setStatusLoading(statusEl, "Working");
   try {
     await request(MESSAGE_TYPES.UNLOCK_PIN, { pin });
     document.getElementById("pinUnlockInput").value = "";
@@ -254,14 +347,39 @@ async function onUnlockPin() {
   }
 }
 
-function showPinCreate() {
+function setPinGateView(view) {
+  const header = document.querySelector(".pin-gate-header");
+  const body = document.querySelector(".pin-gate-body");
+  const create = document.getElementById("pin-create-fields");
+  const unlock = document.getElementById("pin-unlock-fields");
+  const forgot = document.getElementById("pin-forgot-screen");
+
+  if (header) header.hidden = view === "forgot";
+  if (body) body.hidden = view === "forgot" || view === "error";
+  if (create) create.hidden = view !== "create";
+  if (unlock) unlock.hidden = view !== "unlock";
+  if (forgot) forgot.hidden = view !== "forgot";
+}
+
+function showPinForgotScreen() {
+  if (popupBoot) popupBoot.hidden = true;
   pinGate.hidden = false;
   mainShell.hidden = true;
-  document.getElementById("pin-create-fields").hidden = false;
-  document.getElementById("pin-unlock-fields").hidden = true;
+  setPinGateView("forgot");
+  document.getElementById("pinGateStatus").textContent = "";
+  document.getElementById("pinGateStatus").classList.remove("is-error");
+  document.getElementById("pinForgotBackBtn")?.focus();
+}
+
+function showPinCreate() {
+  if (popupBoot) popupBoot.hidden = true;
+  pinGate.hidden = false;
+  mainShell.hidden = true;
+  setPinGateView("create");
   document.getElementById("pin-gate-title").textContent = "Welcome";
-  document.getElementById("pin-gate-desc").textContent =
-    "This passphrase unlocks Shrimpt and protects your keys on this device. It never leaves your browser.";
+  const desc = document.getElementById("pin-gate-desc");
+  desc.hidden = false;
+  desc.textContent = "Protects your keys on this device.";
   document.getElementById("pinCreatePin").value = "";
   document.getElementById("pinCreateConfirm").value = "";
   updatePinCreateValidation();
@@ -269,20 +387,28 @@ function showPinCreate() {
 }
 
 function showPinUnlock() {
+  if (popupBoot) popupBoot.hidden = true;
   pinGate.hidden = false;
   mainShell.hidden = true;
-  document.getElementById("pin-create-fields").hidden = true;
-  document.getElementById("pin-unlock-fields").hidden = false;
+  setPinGateView("unlock");
   document.getElementById("pin-gate-title").textContent = "Unlock Shrimpt";
-  document.getElementById("pin-gate-desc").textContent =
-    "Enter your passphrase to use your keys in this browser session. If you just restarted the browser, this is normal.";
+  const desc = document.getElementById("pin-gate-desc");
+  desc.textContent = "";
+  desc.hidden = true;
   document.getElementById("pinUnlockInput")?.focus();
 }
 
 function showMainApp() {
+  if (popupBoot) popupBoot.hidden = true;
   pinGate.hidden = true;
   mainShell.hidden = false;
-  bindEvents();
+  try {
+    bindEvents();
+  } catch (e) {
+    console.error(e);
+    showInitFailure(e?.message || String(e));
+    return;
+  }
   refreshAll().catch(console.error);
   loadSettingsUi().catch(console.error);
 }
@@ -308,26 +434,30 @@ function setActiveTab(panel) {
 }
 
 function bindEvents() {
-  els.generateProfileBtn.addEventListener("click", onGenerateProfile);
-  els.profileSelect.addEventListener("change", onChangeProfile);
-  els.recipientSelect.addEventListener("change", onRecipientChange);
-  els.importContactBtn.addEventListener("click", onImportContact);
-  els.encryptBtn.addEventListener("click", onEncryptText);
-  els.exportBtn.addEventListener("click", onExportPublicBundle);
-  els.copyCipherBtn.addEventListener("click", () => copyField(els.ciphertextOutput, els.encryptStatus));
-  els.decryptBtn.addEventListener("click", onDecryptFromPopup);
-  els.copyDecryptBtn.addEventListener("click", () => copyField(els.decryptOutput, els.decryptStatus));
-  els.copyExportBtn.addEventListener("click", () => copyField(els.exportOutput, els.generateStatus));
-  els.autoDecrypt.addEventListener("change", () => {
-    updateClickToRevealRowVisibility();
-    persistSettings();
-  });
-  els.clickToReveal.addEventListener("change", () => persistSettings());
-  els.observerDebounceMs.addEventListener("input", schedulePersistSettings);
-  els.observerDebounceMs.addEventListener("change", () => persistSettings());
+  els.generateProfileBtn?.addEventListener("click", onGenerateProfile);
+  els.profileSelect?.addEventListener("change", onChangeProfile);
+  els.recipientSelect?.addEventListener("change", onRecipientChange);
+  els.importContactBtn?.addEventListener("click", onImportContact);
+  els.encryptBtn?.addEventListener("click", onEncryptText);
+  els.exportBtn?.addEventListener("click", onExportPublicBundle);
+  els.copyCipherBtn?.addEventListener("click", () =>
+    copyField(els.ciphertextOutput, els.encryptStatus, els.copyCipherBtn)
+  );
+  els.decryptBtn?.addEventListener("click", onDecryptFromPopup);
+  els.copyDecryptBtn?.addEventListener("click", () =>
+    copyField(els.decryptOutput, els.decryptStatus, els.copyDecryptBtn)
+  );
+  els.copyExportBtn?.addEventListener("click", () =>
+    copyField(els.exportOutput, els.generateStatus, els.copyExportBtn)
+  );
+  els.autoDecrypt?.addEventListener("change", () => persistSettings());
+  els.themeSelect?.addEventListener("change", () => persistSettings());
   els.exportFullBackupBtn?.addEventListener("click", onExportFullBackup);
   els.fullBackupFile?.addEventListener("change", onFullBackupFileSelected);
   els.encryptHandshakeBtn?.addEventListener("click", onEncryptHandshakeExport);
+  document.getElementById("openOptionsBtn")?.addEventListener("click", () => {
+    chrome.runtime.openOptionsPage();
+  });
 }
 
 async function refreshAll() {
@@ -355,7 +485,7 @@ function updatePeopleSummary() {
 
   if (els.whoMeDetail) {
     if (!profileId || !meName) {
-      els.whoMeDetail.textContent = "No profile — add one on Identities.";
+      els.whoMeDetail.textContent = "No profile";
       els.whoMeDetail.classList.add("muted");
     } else {
       els.whoMeDetail.textContent = meFp ? meFp : "No fingerprint.";
@@ -365,55 +495,33 @@ function updatePeopleSummary() {
 
   if (els.whoThemDetail) {
     if (!recipientId) {
-      els.whoThemDetail.textContent = "Anyone — any sender on pages.";
-      els.whoThemDetail.classList.add("muted");
+      els.whoThemDetail.textContent = "";
+      els.whoThemDetail.classList.remove("muted");
     } else if (!themName) {
-      els.whoThemDetail.textContent = "Unknown — import on Contacts.";
+      els.whoThemDetail.textContent = "Unknown contact";
       els.whoThemDetail.classList.add("muted");
     } else {
-      els.whoThemDetail.textContent = themFp ? themFp : "No fingerprint.";
+      els.whoThemDetail.textContent = themFp ? themFp : "";
       els.whoThemDetail.classList.toggle("muted", false);
     }
   }
 
-  updateContextBarHint(meName, recipientId, themName);
 }
 
-function updateContextBarHint(meName, recipientId, themName) {
-  if (!els.contextBarHint) return;
-  let msg = "";
-  if (meName && !recipientId) {
-    msg = "Them is Anyone — pages accept any sender.";
-  } else if (meName && recipientId && !themName) {
-    msg = "Pick a valid Them contact (Contacts tab).";
-  } else if (meName && recipientId && themName) {
-    msg = `Pages: only from ${themName}.`;
-  }
-  els.contextBarHint.textContent = msg;
-  if (els.contextBarHintWrap) {
-    els.contextBarHintWrap.hidden = !msg.trim();
-  }
-}
-
-function updateClickToRevealRowVisibility() {
-  if (!els.clickToRevealRow || !els.autoDecrypt) return;
-  els.clickToRevealRow.hidden = els.autoDecrypt.checked;
+function applyThemeFromSettings(settings) {
+  unbindThemeWatcher();
+  const mode = normalizeThemeMode(settings?.theme);
+  applyTheme(document.documentElement, mode);
+  unbindThemeWatcher = bindThemeWatcher(mode, document.documentElement);
 }
 
 async function loadSettingsUi() {
   const settings = await request(MESSAGE_TYPES.GET_SETTINGS);
+  applyThemeFromSettings(settings);
   els.autoDecrypt.checked = Boolean(settings.autoDecrypt);
-  els.clickToReveal.checked = Boolean(settings.clickToReveal);
-  els.observerDebounceMs.value = settings.observerDebounceMs;
-  updateClickToRevealRowVisibility();
-}
-
-function schedulePersistSettings() {
-  if (settingsPersistTimer) clearTimeout(settingsPersistTimer);
-  settingsPersistTimer = setTimeout(() => {
-    settingsPersistTimer = null;
-    persistSettings();
-  }, 400);
+  if (els.themeSelect) {
+    els.themeSelect.value = normalizeThemeMode(settings.theme);
+  }
 }
 
 async function persistSettings() {
@@ -421,10 +529,10 @@ async function persistSettings() {
   try {
     const payload = {
       autoDecrypt: els.autoDecrypt.checked,
-      clickToReveal: els.clickToReveal.checked,
-      observerDebounceMs: Number(els.observerDebounceMs.value) || 250
+      theme: normalizeThemeMode(els.themeSelect?.value)
     };
-    await request(MESSAGE_TYPES.UPDATE_SETTINGS, payload);
+    const updated = await request(MESSAGE_TYPES.UPDATE_SETTINGS, payload);
+    applyThemeFromSettings(updated);
     els.settingsStatus.textContent = "Saved.";
     els.settingsStatus.classList.remove("is-error");
     setTimeout(() => {
@@ -436,20 +544,57 @@ async function persistSettings() {
   }
 }
 
-async function copyField(textarea, statusEl) {
+async function copyField(textarea, statusEl, buttonEl) {
   const text = textarea.value?.trim();
   if (!text) return;
+
+  const showButtonCopied = () => {
+    if (!buttonEl) return;
+    if (!buttonEl.dataset.copyLabel) {
+      buttonEl.dataset.copyLabel = buttonEl.textContent.trim();
+    }
+    buttonEl.textContent = "Copied";
+    buttonEl.classList.add("is-copied");
+    setTimeout(() => {
+      buttonEl.textContent = buttonEl.dataset.copyLabel;
+      buttonEl.classList.remove("is-copied");
+    }, 1400);
+  };
+
   try {
     await navigator.clipboard.writeText(text);
+    showButtonCopied();
     if (statusEl) {
-      statusEl.textContent = "Copied to clipboard.";
+      statusEl.textContent = "Copied.";
       statusEl.classList.remove("is-error");
     }
   } catch (_err) {
     textarea.select();
     document.execCommand("copy");
-    if (statusEl) statusEl.textContent = "Copied (fallback).";
+    showButtonCopied();
+    if (statusEl) statusEl.textContent = "Copied.";
   }
+}
+
+function appendEmptyContactState(listEl) {
+  const li = document.createElement("li");
+  li.className = "empty-state";
+  li.innerHTML = `
+    <span class="empty-state-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <path
+          d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z"
+          stroke="currentColor"
+          stroke-width="1.5"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+      </svg>
+    </span>
+    <p class="empty-state-title">No contacts yet</p>
+    <p class="empty-state-hint">Import a handshake or JSON above</p>
+  `;
+  listEl.appendChild(li);
 }
 
 async function refreshProfiles() {
@@ -459,7 +604,7 @@ async function refreshProfiles() {
   if (!profilesCache.length) {
     const opt = document.createElement("option");
     opt.value = "";
-    opt.textContent = "No identities yet — create one on Identities";
+    opt.textContent = "No identities yet";
     els.profileSelect.appendChild(opt);
     updatePeopleSummary();
     return;
@@ -484,14 +629,11 @@ async function refreshContacts() {
   els.recipientSelect.innerHTML = "";
 
   if (!contactsCache.length) {
-    const li = document.createElement("li");
-    li.className = "empty";
-    li.textContent = "No contacts — import a handshake or JSON above.";
-    els.contactList.appendChild(li);
+    appendEmptyContactState(els.contactList);
 
     const opt = document.createElement("option");
     opt.value = "";
-    opt.textContent = "No contacts yet — import on this tab";
+    opt.textContent = "No contacts yet";
     els.recipientSelect.appendChild(opt);
     if (savedRecipientId) {
       await persistSelectedRecipientId(null);
@@ -502,7 +644,7 @@ async function refreshContacts() {
 
   const optAnyone = document.createElement("option");
   optAnyone.value = "";
-  optAnyone.textContent = "Anyone — all ciphertext on pages";
+  optAnyone.textContent = "Anyone";
   els.recipientSelect.appendChild(optAnyone);
 
   let matchedSaved = false;
@@ -553,10 +695,10 @@ async function onGenerateProfile() {
   }
 
   setShellBusy(true);
-  els.generateStatus.textContent = "Working…";
+  setStatusLoading(els.generateStatus, "Working");
   try {
     const profile = await request(MESSAGE_TYPES.GENERATE_PROFILE, { name });
-    els.generateStatus.textContent = `Created “${profile.name}”. It is now selected as You above.`;
+    els.generateStatus.textContent = `Created “${profile.name}”.`;
     els.profileName.value = "";
     await refreshProfiles();
   } catch (error) {
@@ -583,7 +725,7 @@ async function onImportContact() {
   if (!raw) return;
 
   setShellBusy(true);
-  if (els.contactImportStatus) els.contactImportStatus.textContent = "Working…";
+  if (els.contactImportStatus) setStatusLoading(els.contactImportStatus, "Working");
   try {
     const parsed = JSON.parse(raw);
 
@@ -625,20 +767,20 @@ async function onEncryptHandshakeExport() {
   try {
     const active = await request(MESSAGE_TYPES.GET_ACTIVE_PROFILE);
     if (!active?.id) {
-      els.generateStatus.textContent = "No active profile. Choose You on the Who tab.";
+      els.generateStatus.textContent = "Choose You above.";
       els.generateStatus.classList.add("is-error");
       return;
     }
 
     const passphrase = els.handshakeExportPass?.value ?? "";
     setShellBusy(true);
-    els.generateStatus.textContent = "Working…";
+    setStatusLoading(els.generateStatus, "Working");
     const wrap = await request(MESSAGE_TYPES.ENCRYPT_HANDSHAKE_EXPORT, {
       profileId: active.id,
       passphrase
     });
     els.exportOutput.value = JSON.stringify(wrap, null, 2);
-    els.generateStatus.textContent = `Encrypted handshake for “${active.name}”. Share the blob + confirmation code separately.`;
+    els.generateStatus.textContent = "Handshake ready.";
   } catch (error) {
     els.generateStatus.textContent = formatLockedError(error);
     els.generateStatus.classList.add("is-error");
@@ -665,7 +807,7 @@ async function onEncryptText() {
   }
 
   setShellBusy(true);
-  els.encryptStatus.textContent = "Working…";
+  setStatusLoading(els.encryptStatus, "Working");
   try {
     const { compact } = await request(MESSAGE_TYPES.ENCRYPT_TEXT, {
       plaintext,
@@ -673,7 +815,7 @@ async function onEncryptText() {
     });
 
     els.ciphertextOutput.value = wrapEnvelope(compact);
-    els.encryptStatus.textContent = `Encrypted for ${contactsCache.find((c) => c.id === recipientContactId)?.name || "recipient"}. Paste into any page.`;
+    els.encryptStatus.textContent = `Encrypted for ${contactsCache.find((c) => c.id === recipientContactId)?.name || "recipient"}.`;
   } catch (error) {
     els.encryptStatus.textContent = formatLockedError(error);
     els.encryptStatus.classList.add("is-error");
@@ -688,16 +830,16 @@ async function onExportPublicBundle() {
   try {
     const active = await request(MESSAGE_TYPES.GET_ACTIVE_PROFILE);
     if (!active?.id) {
-      els.generateStatus.textContent = "No active profile. Choose You on the Who tab.";
+      els.generateStatus.textContent = "Choose You above.";
       els.generateStatus.classList.add("is-error");
       return;
     }
 
     setShellBusy(true);
-    els.generateStatus.textContent = "Working…";
+    setStatusLoading(els.generateStatus, "Working");
     const bundle = await request(MESSAGE_TYPES.EXPORT_PUBLIC_KEY, { profileId: active.id });
     els.exportOutput.value = JSON.stringify(bundle, null, 2);
-    els.generateStatus.textContent = `Plain JSON for “${active.name}” — for local use only.`;
+    els.generateStatus.textContent = "Exported.";
   } catch (error) {
     els.generateStatus.textContent = formatLockedError(error);
     els.generateStatus.classList.add("is-error");
@@ -740,20 +882,18 @@ async function onDecryptFromPopup() {
 
   const { payload, note } = extractCompactPayload(els.ciphertextInput.value);
   if (!payload) {
-    els.decryptStatus.textContent =
-      "No valid payload. Paste wrapped !shpt!…!shpt! text, or a single base64 envelope string.";
+    els.decryptStatus.textContent = "No valid payload.";
     els.decryptStatus.classList.add("is-error");
     return;
   }
 
   setShellBusy(true);
-  els.decryptStatus.textContent = "Working…";
+  setStatusLoading(els.decryptStatus, "Working");
   try {
     const result = await request(MESSAGE_TYPES.DECRYPT_ENVELOPE, { compactEnvelope: payload });
 
     if (result?.skipped && result.code === "WRONG_CONVERSATION") {
-      els.decryptStatus.textContent =
-        "Not decrypted: sender does not match Them. Choose Anyone or the correct contact above.";
+      els.decryptStatus.textContent = "Wrong sender for current Them.";
       els.decryptStatus.classList.add("is-error");
       return;
     }
@@ -764,11 +904,9 @@ async function onDecryptFromPopup() {
     const bits = [];
     if (note) bits.push(note);
     if (result.verified) {
-      bits.push(`Signature verified · from ${sender}`);
+      bits.push(`Verified · ${sender}`);
     } else {
-      bits.push(
-        `Decrypted · from ${sender}${result.senderKnown ? "" : " (signing key not in your contacts)"}`
-      );
+      bits.push(`From ${sender}${result.senderKnown ? "" : " (unknown signer)"}`);
     }
     els.decryptStatus.textContent = bits.join(" — ");
   } catch (error) {
@@ -802,7 +940,7 @@ async function onExportFullBackup() {
     els.backupStatus.classList.remove("is-error");
   }
   setShellBusy(true);
-  if (els.backupStatus) els.backupStatus.textContent = "Working…";
+  if (els.backupStatus) setStatusLoading(els.backupStatus, "Working");
   try {
     const passphrase = els.backupExportPass?.value ?? "";
     const passphraseConfirm = els.backupExportPassConfirm?.value ?? "";
@@ -813,7 +951,7 @@ async function onExportFullBackup() {
     const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
     downloadJsonFile(`shrimpt-backup-${stamp}.json`, wrap);
     if (els.backupStatus) {
-      els.backupStatus.textContent = "Encrypted backup downloaded. Store the password separately.";
+      els.backupStatus.textContent = "Downloaded.";
     }
   } catch (error) {
     if (els.backupStatus) {
@@ -857,7 +995,7 @@ async function onFullBackupFileSelected(ev) {
     }
 
     setShellBusy(true);
-    els.backupStatus.textContent = "Working…";
+    setStatusLoading(els.backupStatus, "Working");
     await request(MESSAGE_TYPES.IMPORT_FULL_BACKUP, {
       rawText: text,
       passphrase: backupPass,
@@ -872,22 +1010,42 @@ async function onFullBackupFileSelected(ev) {
   }
 }
 
-function request(type, payload = {}) {
+function request(type, payload = {}, { timeoutMs = 8000 } = {}) {
   return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (fn, value) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      fn(value);
+    };
+
+    const timer =
+      timeoutMs > 0
+        ? setTimeout(() => {
+            finish(reject, new Error("Extension did not respond in time."));
+          }, timeoutMs)
+        : null;
+
     chrome.runtime.sendMessage({ type, payload }, (response) => {
       if (chrome.runtime.lastError) {
-        reject(new Error(chrome.runtime.lastError.message));
+        finish(reject, new Error(chrome.runtime.lastError.message));
         return;
       }
 
       if (!response?.ok) {
         const err = new Error(response?.error || "Unknown extension error.");
         if (response?.code) err.code = response.code;
-        reject(err);
+        finish(reject, err);
         return;
       }
 
-      resolve(response.result);
+      finish(resolve, response.result);
     });
   });
 }
+
+init().catch((e) => {
+  console.error(e);
+  showInitFailure(e?.message || String(e));
+});

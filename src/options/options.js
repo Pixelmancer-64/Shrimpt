@@ -1,25 +1,35 @@
 import { ERROR_CODES, MESSAGE_TYPES } from "../lib/constants.js";
+import { applyTheme, bindThemeWatcher, normalizeThemeMode } from "../lib/theme.js";
+
+applyTheme(document.documentElement, "system");
 
 const autoDecrypt = document.getElementById("autoDecrypt");
-const clickToReveal = document.getElementById("clickToReveal");
-const clickToRevealRow = document.getElementById("clickToRevealRow");
+const themeSelect = document.getElementById("themeSelect");
 const observerDebounceMs = document.getElementById("observerDebounceMs");
 const saveBtn = document.getElementById("saveBtn");
 const status = document.getElementById("status");
 const pinGate = document.getElementById("pin-gate");
 const mainOptions = document.getElementById("main-options");
 
-function updateClickToRevealRowVisibility() {
-  if (!clickToRevealRow) return;
-  clickToRevealRow.hidden = autoDecrypt.checked;
-}
+let unbindThemeWatcher = () => {};
 
-autoDecrypt?.addEventListener("change", updateClickToRevealRowVisibility);
+function applyThemeFromSettings(settings) {
+  unbindThemeWatcher();
+  const mode = normalizeThemeMode(settings?.theme);
+  applyTheme(document.documentElement, mode);
+  unbindThemeWatcher = bindThemeWatcher(mode, document.documentElement);
+}
 
 init().catch(console.error);
 
 async function init() {
   bindPinEvents();
+  try {
+    applyThemeFromSettings(await request(MESSAGE_TYPES.GET_SETTINGS));
+  } catch (_e) {
+    applyTheme(document.documentElement, "system");
+  }
+
   const pinStatus = await request(MESSAGE_TYPES.PIN_STATUS);
   if (!pinStatus.hasSecret) {
     showPinCreate();
@@ -29,7 +39,7 @@ async function init() {
     showPinUnlock();
     return;
   }
-  showMainOptions();
+  await showMainOptions();
 }
 
 function bindPinEvents() {
@@ -57,7 +67,7 @@ async function onCreatePin() {
   const pinConfirm = document.getElementById("pinCreateConfirm").value;
   try {
     await request(MESSAGE_TYPES.SET_PIN, { pin, pinConfirm });
-    showMainOptions();
+    await showMainOptions();
   } catch (error) {
     pinGateStatus.textContent = error.message;
     pinGateStatus.classList.add("is-error");
@@ -72,7 +82,7 @@ async function onUnlockPin() {
   try {
     await request(MESSAGE_TYPES.UNLOCK_PIN, { pin });
     document.getElementById("pinUnlockInput").value = "";
-    showMainOptions();
+    await showMainOptions();
   } catch (error) {
     pinGateStatus.textContent = error.message;
     pinGateStatus.classList.add("is-error");
@@ -104,26 +114,29 @@ async function showMainOptions() {
   pinGate.hidden = true;
   mainOptions.hidden = false;
   const settings = await request(MESSAGE_TYPES.GET_SETTINGS);
+  applyThemeFromSettings(settings);
   autoDecrypt.checked = Boolean(settings.autoDecrypt);
-  clickToReveal.checked = Boolean(settings.clickToReveal);
+  themeSelect.value = normalizeThemeMode(settings.theme);
   observerDebounceMs.value = settings.observerDebounceMs;
-  updateClickToRevealRowVisibility();
 }
 
 saveBtn.addEventListener("click", async () => {
   status.textContent = "";
+  status.classList.remove("is-error");
   try {
-    await request(MESSAGE_TYPES.UPDATE_SETTINGS, {
+    const updated = await request(MESSAGE_TYPES.UPDATE_SETTINGS, {
       autoDecrypt: autoDecrypt.checked,
-      clickToReveal: clickToReveal.checked,
+      theme: normalizeThemeMode(themeSelect.value),
       observerDebounceMs: Number(observerDebounceMs.value) || 250
     });
+    applyThemeFromSettings(updated);
     status.textContent = "Saved.";
   } catch (error) {
     status.textContent =
       error?.code === ERROR_CODES.LOCKED || error?.message === "LOCKED"
         ? "Locked — unlock from the toolbar popup first."
         : error.message;
+    status.classList.add("is-error");
   }
 });
 
