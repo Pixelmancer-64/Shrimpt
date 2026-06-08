@@ -31,6 +31,24 @@
   font-family: inherit;
 }
 
+button.shrimpt-envelope-reveal {
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, currentColor 45%, transparent);
+  padding: 0 2px;
+}
+
+button.shrimpt-envelope-reveal:focus-visible {
+  outline: 2px solid color-mix(in srgb, currentColor 50%, transparent);
+  outline-offset: 2px;
+}
+
+button.shrimpt-envelope-reveal[role="alert"] {
+  color: #c23b3b;
+  text-decoration: none;
+  font-style: italic;
+}
+
 .shrimpt-envelope-reveal[data-verified="true"] {
   border: none;
   background: transparent;

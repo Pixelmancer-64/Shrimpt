@@ -1,4 +1,5 @@
 import { DEFAULT_SETTINGS, STORAGE_KEYS } from "./constants.js";
+import { sanitizeSettings } from "./settings-sanitize.js";
 
 export async function getLocal(key) {
   const result = await chrome.storage.local.get([key]);
@@ -38,13 +39,11 @@ export async function setActiveProfileId(profileId) {
 }
 
 export async function getSettings() {
-  return {
-    ...DEFAULT_SETTINGS,
-    ...((await getLocal(STORAGE_KEYS.SETTINGS)) || {})
-  };
+  const raw = (await getLocal(STORAGE_KEYS.SETTINGS)) || {};
+  return sanitizeSettings({ ...DEFAULT_SETTINGS, ...raw });
 }
 
 export async function saveSettings(settings) {
   const current = await getSettings();
-  await setLocal(STORAGE_KEYS.SETTINGS, { ...current, ...settings });
+  await setLocal(STORAGE_KEYS.SETTINGS, sanitizeSettings({ ...current, ...settings }));
 }

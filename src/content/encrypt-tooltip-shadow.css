@@ -1,6 +1,6 @@
 /**
  * Closed shadow styles for the page “Click to encrypt” tooltip.
- * Design tokens mirror src/popup/popup.css (:root light + dark).
+ * Design tokens mirror src/lib/ui-tokens.css (:root light + dark).
  */
 :host {
   display: inline-block;
@@ -41,7 +41,7 @@ button.tip {
   margin: 0;
   padding: 7px 14px;
   font-family: var(--font-ui);
-  font-size: 12px;
+  font-size: 1rem;
   font-weight: 600;
   line-height: 1.35;
   border-radius: var(--radius);

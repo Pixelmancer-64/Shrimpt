@@ -1,13 +1,31 @@
-import { ERROR_CODES, MESSAGE_TYPES } from "../lib/constants.js";
+import { ERROR_CODES, MESSAGE_TYPES, STORAGE_KEYS } from "../lib/constants.js";
 import { findEnvelopeMatches, unwrapEnvelopeString, wrapEnvelope } from "../lib/encoding.js";
 import { MAX_SECRET_LENGTH, MIN_SECRET_LENGTH, normalizeSecret } from "../lib/pin.js";
+import { sanitizeSettings } from "../lib/settings-sanitize.js";
 import { applyTheme, bindThemeWatcher, normalizeThemeMode } from "../lib/theme.js";
 
-applyTheme(document.documentElement, "system");
+function bootstrapThemeFromLocalStorage() {
+  try {
+    chrome.storage.local.get([STORAGE_KEYS.SETTINGS], (result) => {
+      const stored = result?.[STORAGE_KEYS.SETTINGS];
+      const theme = sanitizeSettings(stored).theme;
+      applyTheme(document.documentElement, theme);
+    });
+  } catch (_e) {
+    applyTheme(document.documentElement, "system");
+  }
+}
+
+bootstrapThemeFromLocalStorage();
 
 let profilesCache = [];
 let contactsCache = [];
 let unbindThemeWatcher = () => {};
+let mainEventsBound = false;
+let settingsStorageListenerBound = false;
+let backupImportPending = null;
+let introPreviouslyFocused = null;
+let peopleSubnavBound = false;
 
 const popupBoot = document.getElementById("popup-boot");
 const pinGate = document.getElementById("pin-gate");
@@ -19,7 +37,9 @@ const els = {
   tabs: document.querySelectorAll(".tab"),
   profileName: document.getElementById("profileName"),
   generateProfileBtn: document.getElementById("generateProfileBtn"),
-  generateStatus: document.getElementById("generateStatus"),
+  generateProfileStatus: document.getElementById("generateProfileStatus"),
+  handshakeStatus: document.getElementById("handshakeStatus"),
+  exportJsonStatus: document.getElementById("exportJsonStatus"),
   profileSelect: document.getElementById("profileSelect"),
   contactJson: document.getElementById("contactJson"),
   importContactBtn: document.getElementById("importContactBtn"),
@@ -32,12 +52,15 @@ const els = {
   copyCipherBtn: document.getElementById("copyCipherBtn"),
   exportBtn: document.getElementById("exportBtn"),
   exportOutput: document.getElementById("exportOutput"),
+  publicJsonOutput: document.getElementById("publicJsonOutput"),
+  copyPublicJsonBtn: document.getElementById("copyPublicJsonBtn"),
   copyExportBtn: document.getElementById("copyExportBtn"),
   autoDecrypt: document.getElementById("autoDecrypt"),
   themeSelect: document.getElementById("themeSelect"),
   settingsStatus: document.getElementById("settingsStatus"),
   whoMeDetail: document.getElementById("whoMeDetail"),
   whoThemDetail: document.getElementById("whoThemDetail"),
+  contextEncryptHint: document.getElementById("contextEncryptHint"),
   ciphertextInput: document.getElementById("ciphertextInput"),
   decryptBtn: document.getElementById("decryptBtn"),
   decryptOutput: document.getElementById("decryptOutput"),
@@ -45,6 +68,10 @@ const els = {
   copyDecryptBtn: document.getElementById("copyDecryptBtn"),
   exportFullBackupBtn: document.getElementById("exportFullBackupBtn"),
   fullBackupFile: document.getElementById("fullBackupFile"),
+  backupFileName: document.getElementById("backupFileName"),
+  backupRestoreConfirm: document.getElementById("backupRestoreConfirm"),
+  backupRestoreToken: document.getElementById("backupRestoreToken"),
+  restoreFullBackupBtn: document.getElementById("restoreFullBackupBtn"),
   backupStatus: document.getElementById("backupStatus"),
   handshakeExportPass: document.getElementById("handshakeExportPass"),
   encryptHandshakeBtn: document.getElementById("encryptHandshakeBtn"),
@@ -144,6 +171,45 @@ function wirePasswordToggles() {
   });
 }
 
+function setStatusSuccess(el, message) {
+  if (!el) return;
+  el.textContent = message;
+  el.classList.remove("is-error");
+  el.classList.add("is-success");
+}
+
+function clearStatusClasses(el) {
+  if (!el) return;
+  el.classList.remove("is-error", "is-success");
+}
+
+function updateCopyButtonsState() {
+  const pairs = [
+    [els.ciphertextOutput, els.copyCipherBtn],
+    [els.decryptOutput, els.copyDecryptBtn],
+    [els.exportOutput, els.copyExportBtn],
+    [els.publicJsonOutput, els.copyPublicJsonBtn]
+  ];
+  for (const [field, btn] of pairs) {
+    if (btn) btn.disabled = !field?.value?.trim();
+  }
+}
+
+function updatePinUnlockValidation() {
+  const pin = normalizeSecret(document.getElementById("pinUnlockInput")?.value ?? "");
+  if (pinUnlockBtn && !pinGate?.dataset.busy) {
+    pinUnlockBtn.disabled = !pin.length;
+  }
+}
+
+function updateRestoreButtonState() {
+  if (!els.restoreFullBackupBtn) return;
+  const confirmed = Boolean(els.backupRestoreConfirm?.checked);
+  const tokenOk = els.backupRestoreToken?.value?.trim() === "REPLACE";
+  const hasFile = Boolean(backupImportPending?.text);
+  els.restoreFullBackupBtn.disabled = !(confirmed && tokenOk && hasFile);
+}
+
 function setShellBusy(on) {
   if (mainShell) mainShell.dataset.busy = on ? "1" : "";
 }
@@ -151,7 +217,7 @@ function setShellBusy(on) {
 function setPinBusy(on) {
   pinGate.dataset.busy = on ? "1" : "";
   if (pinCreateBtn) pinCreateBtn.disabled = on;
-  if (pinUnlockBtn) pinUnlockBtn.disabled = on;
+  if (pinUnlockBtn) pinUnlockBtn.disabled = on || !normalizeSecret(document.getElementById("pinUnlockInput")?.value ?? "").length;
 }
 
 function showInitFailure(message) {
@@ -166,9 +232,12 @@ function showInitFailure(message) {
   const st = document.getElementById("pinGateStatus");
   st.textContent = message;
   st.classList.add("is-error");
+  document.getElementById("pinRetryBtn")?.focus();
 }
 
 async function init() {
+  bindSettingsStorageListener();
+  bindIntroEvents();
   try {
     wirePasswordToggles();
     bindTabs();
@@ -214,8 +283,10 @@ function bindPinEvents() {
     el?.addEventListener("input", () => {
       if (el.value.length > 256) el.value = el.value.slice(0, 256);
       if (id === "pinCreatePin" || id === "pinCreateConfirm") updatePinCreateValidation();
+      if (id === "pinUnlockInput") updatePinUnlockValidation();
     });
   }
+  document.getElementById("pinRetryBtn")?.addEventListener("click", () => location.reload());
   document.getElementById("pinUnlockInput")?.addEventListener("keydown", (e) => {
     if (e.key === "Enter") onUnlockPin();
   });
@@ -353,12 +424,14 @@ function setPinGateView(view) {
   const create = document.getElementById("pin-create-fields");
   const unlock = document.getElementById("pin-unlock-fields");
   const forgot = document.getElementById("pin-forgot-screen");
+  const retry = document.getElementById("pinRetryBtn");
 
-  if (header) header.hidden = view === "forgot";
+  if (header) header.hidden = view === "forgot" || view === "error";
   if (body) body.hidden = view === "forgot" || view === "error";
   if (create) create.hidden = view !== "create";
   if (unlock) unlock.hidden = view !== "unlock";
   if (forgot) forgot.hidden = view !== "forgot";
+  if (retry) retry.hidden = view !== "error";
 }
 
 function showPinForgotScreen() {
@@ -395,6 +468,7 @@ function showPinUnlock() {
   const desc = document.getElementById("pin-gate-desc");
   desc.textContent = "";
   desc.hidden = true;
+  updatePinUnlockValidation();
   document.getElementById("pinUnlockInput")?.focus();
 }
 
@@ -411,29 +485,132 @@ function showMainApp() {
   }
   refreshAll().catch(console.error);
   loadSettingsUi().catch(console.error);
+  maybeShowOnboarding().catch(console.error);
+  updateCopyButtonsState();
+  bindPeopleSubnav();
+}
+
+function bindIntroEvents() {
+  document.getElementById("introDismissBtn")?.addEventListener("click", dismissIntro);
+  document.getElementById("introSkipBtn")?.addEventListener("click", dismissIntro);
+  const overlay = document.getElementById("intro-overlay");
+  overlay?.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") dismissIntro();
+    if (e.key !== "Tab" || !overlay || overlay.hidden) return;
+    const focusables = overlay.querySelectorAll(
+      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    );
+    const list = [...focusables].filter((el) => el.offsetParent !== null);
+    if (!list.length) return;
+    const first = list[0];
+    const last = list[list.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  });
+}
+
+async function showIntroOverlay() {
+  const overlay = document.getElementById("intro-overlay");
+  if (!overlay) return;
+  introPreviouslyFocused = document.activeElement;
+  overlay.hidden = false;
+  document.getElementById("introDismissBtn")?.focus();
+}
+
+async function maybeShowOnboarding() {
+  const stored = await chrome.storage.local.get([STORAGE_KEYS.ONBOARDING_COMPLETE]);
+  if (stored[STORAGE_KEYS.ONBOARDING_COMPLETE]) return;
+  await showIntroOverlay();
+}
+
+async function dismissIntro() {
+  await chrome.storage.local.set({ [STORAGE_KEYS.ONBOARDING_COMPLETE]: true });
+  const overlay = document.getElementById("intro-overlay");
+  if (overlay) overlay.hidden = true;
+  if (introPreviouslyFocused?.focus) {
+    introPreviouslyFocused.focus();
+  } else {
+    els.encryptBtn?.focus();
+  }
+}
+
+async function resetOnboarding() {
+  await chrome.storage.local.remove(STORAGE_KEYS.ONBOARDING_COMPLETE);
+  await showIntroOverlay();
 }
 
 function bindTabs() {
-  els.tabs.forEach((tab) => {
+  els.tabs.forEach((tab, index) => {
     tab.addEventListener("click", () => {
       const panel = tab.dataset.panel;
       if (!panel) return;
       setActiveTab(panel);
     });
+    tab.addEventListener("keydown", (e) => {
+      const tabs = [...els.tabs];
+      let next = index;
+      if (e.key === "ArrowRight") next = (index + 1) % tabs.length;
+      else if (e.key === "ArrowLeft") next = (index - 1 + tabs.length) % tabs.length;
+      else if (e.key === "Home") next = 0;
+      else if (e.key === "End") next = tabs.length - 1;
+      else return;
+      e.preventDefault();
+      tabs[next]?.focus();
+      const panel = tabs[next]?.dataset.panel;
+      if (panel) setActiveTab(panel);
+    });
   });
 }
 
 function setActiveTab(panel) {
-  els.tabs.forEach((t) => t.classList.toggle("is-active", t.dataset.panel === panel));
+  els.tabs.forEach((t) => {
+    const active = t.dataset.panel === panel;
+    t.classList.toggle("is-active", active);
+    t.setAttribute("aria-selected", active ? "true" : "false");
+  });
   document.querySelectorAll(".panel").forEach((p) => {
     p.classList.toggle("is-active", p.id === `panel-${panel}`);
   });
   if (mainShell) {
     mainShell.dataset.activePanel = panel;
   }
+  document.querySelector(".body-scroll")?.scrollTo(0, 0);
+}
+
+function setPeoplePanel(panel) {
+  document.querySelectorAll(".people-subnav-btn").forEach((btn) => {
+    const active = btn.dataset.peoplePanel === panel;
+    btn.classList.toggle("is-active", active);
+    btn.setAttribute("aria-selected", active ? "true" : "false");
+  });
+  document.querySelectorAll(".people-panel").forEach((el) => {
+    const active = el.dataset.peoplePanel === panel;
+    el.classList.toggle("is-active", active);
+    el.hidden = !active;
+  });
+  document.querySelector(".body-scroll")?.scrollTo(0, 0);
+}
+
+function bindPeopleSubnav() {
+  if (peopleSubnavBound) return;
+  peopleSubnavBound = true;
+  document.querySelectorAll(".people-subnav-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const panel = btn.dataset.peoplePanel;
+      if (panel) setPeoplePanel(panel);
+    });
+  });
 }
 
 function bindEvents() {
+  if (mainEventsBound) return;
+  mainEventsBound = true;
+
   els.generateProfileBtn?.addEventListener("click", onGenerateProfile);
   els.profileSelect?.addEventListener("change", onChangeProfile);
   els.recipientSelect?.addEventListener("change", onRecipientChange);
@@ -448,15 +625,31 @@ function bindEvents() {
     copyField(els.decryptOutput, els.decryptStatus, els.copyDecryptBtn)
   );
   els.copyExportBtn?.addEventListener("click", () =>
-    copyField(els.exportOutput, els.generateStatus, els.copyExportBtn)
+    copyField(els.exportOutput, els.handshakeStatus, els.copyExportBtn)
   );
+  els.copyPublicJsonBtn?.addEventListener("click", () =>
+    copyField(els.publicJsonOutput, els.exportJsonStatus, els.copyPublicJsonBtn)
+  );
+  for (const field of [els.ciphertextOutput, els.decryptOutput, els.exportOutput, els.publicJsonOutput]) {
+    field?.addEventListener("input", updateCopyButtonsState);
+  }
   els.autoDecrypt?.addEventListener("change", () => persistSettings());
   els.themeSelect?.addEventListener("change", () => persistSettings());
   els.exportFullBackupBtn?.addEventListener("click", onExportFullBackup);
   els.fullBackupFile?.addEventListener("change", onFullBackupFileSelected);
+  els.restoreFullBackupBtn?.addEventListener("click", onRestoreFullBackup);
+  els.backupRestoreConfirm?.addEventListener("change", updateRestoreButtonState);
+  els.backupRestoreToken?.addEventListener("input", updateRestoreButtonState);
   els.encryptHandshakeBtn?.addEventListener("click", onEncryptHandshakeExport);
   document.getElementById("openOptionsBtn")?.addEventListener("click", () => {
     chrome.runtime.openOptionsPage();
+  });
+  document.getElementById("showTourBtn")?.addEventListener("click", () => resetOnboarding().catch(console.error));
+  els.contextEncryptHint?.addEventListener("click", () => {
+    if (!profilesCache.length || (contactsCache.length && !els.recipientSelect?.value)) {
+      setActiveTab("identities");
+      setPeoplePanel(!profilesCache.length ? "setup" : "contacts");
+    }
   });
 }
 
@@ -482,9 +675,13 @@ function updatePeopleSummary() {
   const meFp = fingerprintSnippet(profile?.fingerprint);
   const themName = contact?.name || null;
   const themFp = fingerprintSnippet(contact?.fingerprint);
+  const hasProfile = profilesCache.length > 0 && Boolean(profileId);
 
   if (els.whoMeDetail) {
-    if (!profileId || !meName) {
+    if (!profilesCache.length) {
+      els.whoMeDetail.textContent = "Create an identity on People";
+      els.whoMeDetail.classList.add("muted");
+    } else if (!profileId || !meName) {
       els.whoMeDetail.textContent = "No profile";
       els.whoMeDetail.classList.add("muted");
     } else {
@@ -506,6 +703,51 @@ function updatePeopleSummary() {
     }
   }
 
+  updateActionGuards(hasProfile, recipientId);
+}
+
+function updateActionGuards(hasProfile, recipientId) {
+  const canEncrypt = Boolean(hasProfile && recipientId);
+
+  if (els.encryptBtn) {
+    els.encryptBtn.disabled = !canEncrypt;
+  }
+
+  if (els.contextEncryptHint) {
+    if (!hasProfile) {
+      els.contextEncryptHint.hidden = false;
+      els.contextEncryptHint.textContent = "Create an identity on People → Setup";
+    } else if (!recipientId) {
+      els.contextEncryptHint.hidden = false;
+      els.contextEncryptHint.textContent = contactsCache.length
+        ? "Choose a contact as Them to encrypt"
+        : "Add a contact on People → Contacts";
+    } else {
+      els.contextEncryptHint.hidden = true;
+      els.contextEncryptHint.textContent = "";
+    }
+  }
+}
+
+function bindSettingsStorageListener() {
+  if (settingsStorageListenerBound) return;
+  settingsStorageListenerBound = true;
+
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== "local" || !changes[STORAGE_KEYS.SETTINGS]) return;
+
+    const settings = sanitizeSettings(changes[STORAGE_KEYS.SETTINGS].newValue);
+    applyThemeFromSettings(settings);
+
+    if (mainShell?.hidden) return;
+
+    if (els.themeSelect) {
+      els.themeSelect.value = normalizeThemeMode(settings.theme);
+    }
+    if (els.autoDecrypt) {
+      els.autoDecrypt.checked = Boolean(settings.autoDecrypt);
+    }
+  });
 }
 
 function applyThemeFromSettings(settings) {
@@ -533,10 +775,9 @@ async function persistSettings() {
     };
     const updated = await request(MESSAGE_TYPES.UPDATE_SETTINGS, payload);
     applyThemeFromSettings(updated);
-    els.settingsStatus.textContent = "Saved.";
-    els.settingsStatus.classList.remove("is-error");
+    setStatusSuccess(els.settingsStatus, "Saved.");
     setTimeout(() => {
-      if (els.settingsStatus.textContent === "Saved.") els.settingsStatus.textContent = "";
+      if (els.settingsStatus?.textContent === "Saved.") els.settingsStatus.textContent = "";
     }, 1400);
   } catch (error) {
     els.settingsStatus.textContent = formatLockedError(error);
@@ -564,15 +805,12 @@ async function copyField(textarea, statusEl, buttonEl) {
   try {
     await navigator.clipboard.writeText(text);
     showButtonCopied();
-    if (statusEl) {
-      statusEl.textContent = "Copied.";
-      statusEl.classList.remove("is-error");
-    }
+    if (statusEl) setStatusSuccess(statusEl, "Copied.");
   } catch (_err) {
     textarea.select();
     document.execCommand("copy");
     showButtonCopied();
-    if (statusEl) statusEl.textContent = "Copied.";
+    if (statusEl) setStatusSuccess(statusEl, "Copied.");
   }
 }
 
@@ -642,16 +880,25 @@ async function refreshContacts() {
     return;
   }
 
-  const optAnyone = document.createElement("option");
-  optAnyone.value = "";
-  optAnyone.textContent = "Anyone";
-  els.recipientSelect.appendChild(optAnyone);
+  const optPlaceholder = document.createElement("option");
+  optPlaceholder.value = "";
+  optPlaceholder.textContent = "Select contact…";
+  els.recipientSelect.appendChild(optPlaceholder);
 
   let matchedSaved = false;
   for (const contact of contactsCache) {
     const li = document.createElement("li");
+    li.className = "contact-selectable";
     const fp = contact.fingerprint?.slice(0, 16) || "—";
     li.textContent = `${contact.name} · ${fp}…`;
+    if (savedRecipientId && contact.id === savedRecipientId) {
+      li.classList.add("is-selected");
+    }
+    li.addEventListener("click", async () => {
+      els.recipientSelect.value = contact.id;
+      await onRecipientChange();
+      setActiveTab("send");
+    });
     els.contactList.appendChild(li);
 
     const opt = document.createElement("option");
@@ -685,25 +932,25 @@ async function onRecipientChange() {
 }
 
 async function onGenerateProfile() {
-  els.generateStatus.textContent = "";
-  els.generateStatus.classList.remove("is-error");
+  els.generateProfileStatus.textContent = "";
+  clearStatusClasses(els.generateProfileStatus);
   const name = els.profileName.value.trim();
   if (!name) {
-    els.generateStatus.textContent = "Enter an identity name first.";
-    els.generateStatus.classList.add("is-error");
+    els.generateProfileStatus.textContent = "Enter an identity name first.";
+    els.generateProfileStatus.classList.add("is-error");
     return;
   }
 
   setShellBusy(true);
-  setStatusLoading(els.generateStatus, "Working");
+  setStatusLoading(els.generateProfileStatus, "Working");
   try {
     const profile = await request(MESSAGE_TYPES.GENERATE_PROFILE, { name });
-    els.generateStatus.textContent = `Created “${profile.name}”.`;
+    setStatusSuccess(els.generateProfileStatus, `Created “${profile.name}”.`);
     els.profileName.value = "";
     await refreshProfiles();
   } catch (error) {
-    els.generateStatus.textContent = formatLockedError(error);
-    els.generateStatus.classList.add("is-error");
+    els.generateProfileStatus.textContent = formatLockedError(error);
+    els.generateProfileStatus.classList.add("is-error");
   } finally {
     setShellBusy(false);
   }
@@ -719,10 +966,16 @@ async function onChangeProfile() {
 async function onImportContact() {
   if (els.contactImportStatus) {
     els.contactImportStatus.textContent = "";
-    els.contactImportStatus.classList.remove("is-error");
+    clearStatusClasses(els.contactImportStatus);
   }
   const raw = els.contactJson.value.trim();
-  if (!raw) return;
+  if (!raw) {
+    if (els.contactImportStatus) {
+      els.contactImportStatus.textContent = "Paste a handshake blob or JSON first.";
+      els.contactImportStatus.classList.add("is-error");
+    }
+    return;
+  }
 
   setShellBusy(true);
   if (els.contactImportStatus) setStatusLoading(els.contactImportStatus, "Working");
@@ -748,8 +1001,7 @@ async function onImportContact() {
     if (els.contactHandshakePass) els.contactHandshakePass.value = "";
     await refreshContacts();
     if (els.contactImportStatus) {
-      els.contactImportStatus.textContent = "Contact imported.";
-      els.contactImportStatus.classList.remove("is-error");
+      setStatusSuccess(els.contactImportStatus, "Contact imported.");
     }
   } catch (error) {
     if (els.contactImportStatus) {
@@ -762,28 +1014,29 @@ async function onImportContact() {
 }
 
 async function onEncryptHandshakeExport() {
-  els.generateStatus.textContent = "";
-  els.generateStatus.classList.remove("is-error");
+  els.handshakeStatus.textContent = "";
+  els.handshakeStatus.classList.remove("is-error");
   try {
     const active = await request(MESSAGE_TYPES.GET_ACTIVE_PROFILE);
     if (!active?.id) {
-      els.generateStatus.textContent = "Choose You above.";
-      els.generateStatus.classList.add("is-error");
+      els.handshakeStatus.textContent = "Choose You above.";
+      els.handshakeStatus.classList.add("is-error");
       return;
     }
 
     const passphrase = els.handshakeExportPass?.value ?? "";
     setShellBusy(true);
-    setStatusLoading(els.generateStatus, "Working");
+    setStatusLoading(els.handshakeStatus, "Working");
     const wrap = await request(MESSAGE_TYPES.ENCRYPT_HANDSHAKE_EXPORT, {
       profileId: active.id,
       passphrase
     });
     els.exportOutput.value = JSON.stringify(wrap, null, 2);
-    els.generateStatus.textContent = "Handshake ready.";
+    setStatusSuccess(els.handshakeStatus, "Handshake ready.");
+    updateCopyButtonsState();
   } catch (error) {
-    els.generateStatus.textContent = formatLockedError(error);
-    els.generateStatus.classList.add("is-error");
+    els.handshakeStatus.textContent = formatLockedError(error);
+    els.handshakeStatus.classList.add("is-error");
   } finally {
     setShellBusy(false);
   }
@@ -815,7 +1068,8 @@ async function onEncryptText() {
     });
 
     els.ciphertextOutput.value = wrapEnvelope(compact);
-    els.encryptStatus.textContent = `Encrypted for ${contactsCache.find((c) => c.id === recipientContactId)?.name || "recipient"}.`;
+    setStatusSuccess(els.encryptStatus, `Encrypted for ${contactsCache.find((c) => c.id === recipientContactId)?.name || "recipient"}.`);
+    updateCopyButtonsState();
   } catch (error) {
     els.encryptStatus.textContent = formatLockedError(error);
     els.encryptStatus.classList.add("is-error");
@@ -825,24 +1079,27 @@ async function onEncryptText() {
 }
 
 async function onExportPublicBundle() {
-  els.generateStatus.textContent = "";
-  els.generateStatus.classList.remove("is-error");
+  els.exportJsonStatus.textContent = "";
+  els.exportJsonStatus.classList.remove("is-error");
   try {
     const active = await request(MESSAGE_TYPES.GET_ACTIVE_PROFILE);
     if (!active?.id) {
-      els.generateStatus.textContent = "Choose You above.";
-      els.generateStatus.classList.add("is-error");
+      els.exportJsonStatus.textContent = "Choose You above.";
+      els.exportJsonStatus.classList.add("is-error");
       return;
     }
 
     setShellBusy(true);
-    setStatusLoading(els.generateStatus, "Working");
+    setStatusLoading(els.exportJsonStatus, "Working");
     const bundle = await request(MESSAGE_TYPES.EXPORT_PUBLIC_KEY, { profileId: active.id });
-    els.exportOutput.value = JSON.stringify(bundle, null, 2);
-    els.generateStatus.textContent = "Exported.";
+    if (els.publicJsonOutput) {
+      els.publicJsonOutput.value = JSON.stringify(bundle, null, 2);
+    }
+    setStatusSuccess(els.exportJsonStatus, "Exported.");
+    updateCopyButtonsState();
   } catch (error) {
-    els.generateStatus.textContent = formatLockedError(error);
-    els.generateStatus.classList.add("is-error");
+    els.exportJsonStatus.textContent = formatLockedError(error);
+    els.exportJsonStatus.classList.add("is-error");
   } finally {
     setShellBusy(false);
   }
@@ -951,7 +1208,7 @@ async function onExportFullBackup() {
     const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
     downloadJsonFile(`shrimpt-backup-${stamp}.json`, wrap);
     if (els.backupStatus) {
-      els.backupStatus.textContent = "Downloaded.";
+      setStatusSuccess(els.backupStatus, "Downloaded.");
     }
   } catch (error) {
     if (els.backupStatus) {
@@ -966,14 +1223,37 @@ async function onExportFullBackup() {
 async function onFullBackupFileSelected(ev) {
   const input = ev.target;
   const file = input.files?.[0];
-  input.value = "";
-  if (!file || !els.backupStatus) return;
+  if (!file) return;
 
-  els.backupStatus.textContent = "";
-  els.backupStatus.classList.remove("is-error");
+  if (els.backupStatus) {
+    els.backupStatus.textContent = "";
+    clearStatusClasses(els.backupStatus);
+  }
 
   try {
     const text = await file.text();
+    backupImportPending = { text, name: file.name };
+    if (els.backupFileName) els.backupFileName.textContent = file.name;
+    updateRestoreButtonState();
+  } catch (error) {
+    backupImportPending = null;
+    if (els.backupFileName) els.backupFileName.textContent = "";
+    if (els.backupStatus) {
+      els.backupStatus.textContent = formatLockedError(error);
+      els.backupStatus.classList.add("is-error");
+    }
+    updateRestoreButtonState();
+  }
+}
+
+async function onRestoreFullBackup() {
+  if (!backupImportPending?.text || !els.backupStatus) return;
+
+  els.backupStatus.textContent = "";
+  clearStatusClasses(els.backupStatus);
+
+  try {
+    const text = backupImportPending.text;
     const head = JSON.parse(text.trim());
     const isEnc = head && head.uwuEncrypted === 1;
     const backupPass = els.backupImportPass?.value ?? "";
@@ -983,19 +1263,8 @@ async function onFullBackupFileSelected(ev) {
       return;
     }
 
-    const ok = confirm(
-      "Replace all keys, contacts, and settings on this device with this backup? This cannot be undone."
-    );
-    if (!ok) return;
-
-    const token = prompt("To continue, type REPLACE in capital letters:");
-    if (token !== "REPLACE") {
-      els.backupStatus.textContent = "Restore cancelled.";
-      return;
-    }
-
     setShellBusy(true);
-    setStatusLoading(els.backupStatus, "Working");
+    setStatusLoading(els.backupStatus, "Restoring");
     await request(MESSAGE_TYPES.IMPORT_FULL_BACKUP, {
       rawText: text,
       passphrase: backupPass,

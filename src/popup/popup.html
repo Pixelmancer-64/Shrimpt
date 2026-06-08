@@ -93,7 +93,7 @@
                 maxlength="256"
                 autocomplete="current-password"
               />
-              <button type="button" id="pinUnlockBtn" class="btn btn-primary btn-block">Unlock</button>
+              <button type="button" id="pinUnlockBtn" class="btn btn-primary btn-block" disabled>Unlock</button>
               <button type="button" id="pinForgotBtn" class="btn btn-link btn-forgot-pin">
                 Forgot your password?
               </button>
@@ -195,7 +195,8 @@
             </div>
           </div>
 
-          <p id="pinGateStatus" class="status pin-gate-status" role="status"></p>
+          <p id="pinGateStatus" class="status pin-gate-status" role="status" aria-live="polite"></p>
+          <button type="button" id="pinRetryBtn" class="btn btn-secondary btn-block" hidden>Try again</button>
         </div>
       </div>
     </div>
@@ -243,9 +244,10 @@
           </div>
         </div>
       </div>
+      <button type="button" id="contextEncryptHint" class="context-action-hint help" hidden aria-live="polite"></button>
 
       <div class="body-scroll">
-        <section id="panel-send" class="panel is-active" aria-labelledby="tab-send-label">
+        <section id="panel-send" class="panel is-active" role="tabpanel" aria-labelledby="tab-send-label">
           <div class="section-card">
             <div class="section-card-head">
               <h2 class="title-with-icon">
@@ -269,7 +271,7 @@
                 id="plaintext"
                 class="input input-textarea"
                 placeholder="Type a message…"
-                rows="4"
+                rows="3"
               ></textarea>
             </div>
             <button id="encryptBtn" type="button" class="btn btn-primary">Encrypt</button>
@@ -280,11 +282,11 @@
               </div>
               <textarea id="ciphertextOutput" class="input input-textarea input-mono" readonly rows="3" placeholder="!shpt!…!shpt!"></textarea>
             </div>
-            <p id="encryptStatus" class="status status-in-card" role="status"></p>
+            <p id="encryptStatus" class="status status-in-card" role="status" aria-live="polite"></p>
           </div>
         </section>
 
-        <section id="panel-decrypt" class="panel" aria-labelledby="tab-decrypt-label">
+        <section id="panel-decrypt" class="panel" role="tabpanel" aria-labelledby="tab-decrypt-label">
           <div class="section-card">
             <div class="section-card-head">
               <h2 class="title-with-icon">
@@ -307,7 +309,7 @@
               <textarea
                 id="ciphertextInput"
                 class="input input-textarea input-mono"
-                rows="4"
+                rows="3"
                 placeholder="!shpt!…!shpt!"
               ></textarea>
             </div>
@@ -319,11 +321,18 @@
               </div>
               <textarea id="decryptOutput" class="input input-textarea" readonly rows="4" placeholder="Decrypted text"></textarea>
             </div>
-            <p id="decryptStatus" class="status status-in-card" role="status"></p>
+            <p id="decryptStatus" class="status status-in-card" role="status" aria-live="polite"></p>
           </div>
         </section>
 
-        <section id="panel-identities" class="panel" aria-labelledby="tab-identities-label">
+        <section id="panel-identities" class="panel" role="tabpanel" aria-labelledby="tab-identities-label">
+          <div class="people-subnav" role="tablist" aria-label="People sections">
+            <button type="button" class="people-subnav-btn is-active" role="tab" aria-selected="true" data-people-panel="setup" id="people-tab-setup">Setup</button>
+            <button type="button" class="people-subnav-btn" role="tab" aria-selected="false" data-people-panel="invite" id="people-tab-invite">Invite</button>
+            <button type="button" class="people-subnav-btn" role="tab" aria-selected="false" data-people-panel="contacts" id="people-tab-contacts">Contacts</button>
+          </div>
+
+          <div class="people-panel is-active" data-people-panel="setup" role="tabpanel" aria-labelledby="people-tab-setup">
           <div class="section-card">
             <div class="section-card-head">
               <h2 class="title-with-icon">
@@ -346,9 +355,39 @@
               <input id="profileName" class="input" type="text" placeholder="e.g. Work laptop" autocomplete="off" />
             </div>
             <button id="generateProfileBtn" type="button" class="btn btn-primary">Generate keys</button>
-            <div id="generateStatus" class="status status-in-card"></div>
+            <div id="generateProfileStatus" class="status status-in-card" role="status" aria-live="polite"></div>
           </div>
 
+          <div class="section-card section-card-muted">
+            <div class="section-card-head">
+              <h2 class="title-with-icon">
+                <span class="title-icon-wrap title-icon-wrap-muted" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path
+                      d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5"
+                      stroke="currentColor"
+                      stroke-width="1.5"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
+                </span>
+                <span class="title-text">Public JSON</span>
+              </h2>
+            </div>
+            <button id="exportBtn" type="button" class="btn btn-secondary">Export JSON</button>
+            <div class="field-group field-group-tight">
+              <div class="label-row">
+                <label class="label" for="publicJsonOutput">JSON</label>
+                <button id="copyPublicJsonBtn" type="button" class="btn btn-ghost btn-small">Copy</button>
+              </div>
+              <textarea id="publicJsonOutput" class="input input-textarea input-mono" readonly rows="4" placeholder="Public key JSON"></textarea>
+            </div>
+            <p id="exportJsonStatus" class="status status-in-card" role="status" aria-live="polite"></p>
+          </div>
+          </div>
+
+          <div class="people-panel" data-people-panel="invite" role="tabpanel" aria-labelledby="people-tab-invite" hidden>
           <div class="section-card">
             <div class="section-card-head">
               <h2 class="title-with-icon">
@@ -381,28 +420,11 @@
               </div>
               <textarea id="exportOutput" class="input input-textarea input-mono" readonly rows="4" placeholder="Handshake output"></textarea>
             </div>
+            <p id="handshakeStatus" class="status status-in-card" role="status" aria-live="polite"></p>
+          </div>
           </div>
 
-          <div class="section-card section-card-muted">
-            <div class="section-card-head">
-              <h2 class="title-with-icon">
-                <span class="title-icon-wrap title-icon-wrap-muted" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                    <path
-                      d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5"
-                      stroke="currentColor"
-                      stroke-width="1.5"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                    />
-                  </svg>
-                </span>
-                <span class="title-text">Public JSON</span>
-              </h2>
-            </div>
-            <button id="exportBtn" type="button" class="btn btn-secondary">Export JSON</button>
-          </div>
-
+          <div class="people-panel" data-people-panel="contacts" role="tabpanel" aria-labelledby="people-tab-contacts" hidden>
           <div class="section-card">
             <div class="section-card-head">
               <h2 class="title-with-icon">
@@ -432,7 +454,7 @@
               <input id="contactHandshakePass" class="input" type="password" autocomplete="off" maxlength="256" placeholder="Empty if plain JSON" />
             </div>
             <button id="importContactBtn" type="button" class="btn btn-primary">Import</button>
-            <p id="contactImportStatus" class="status status-in-card" role="status"></p>
+            <p id="contactImportStatus" class="status status-in-card" role="status" aria-live="polite"></p>
           </div>
 
           <div class="section-card">
@@ -452,11 +474,13 @@
                 <span class="title-text">Saved contacts</span>
               </h2>
             </div>
-            <ul id="contactList" class="contact-list contact-list-flush"></ul>
+            <p class="help">Click a contact to set Them.</p>
+            <ul id="contactList" class="contact-list contact-list-flush contact-list-capped"></ul>
+          </div>
           </div>
         </section>
 
-        <section id="panel-settings" class="panel" aria-labelledby="tab-settings-label">
+        <section id="panel-settings" class="panel" role="tabpanel" aria-labelledby="tab-settings-label">
           <div class="section-card">
             <div class="section-card-head">
               <h2 class="title-with-icon">
@@ -481,17 +505,20 @@
                 <option value="light">Light</option>
                 <option value="dark">Dark</option>
               </select>
+              <p class="help settings-options-note">Also in extension options (scan debounce and more).</p>
             </div>
             <label class="check-row">
               <input id="autoDecrypt" type="checkbox" />
               <span>Auto-decrypt on pages</span>
             </label>
             <button type="button" id="openOptionsBtn" class="btn btn-link settings-advanced-link">
-              Advanced settings (scan debounce)
+              Open extension options
             </button>
+            <button type="button" id="showTourBtn" class="btn btn-link settings-advanced-link">
+              Show tour again
+            </button>
+            <p id="settingsStatus" class="status status-in-card settings-autosave-status" role="status" aria-live="polite"></p>
           </div>
-
-          <p id="settingsStatus" class="status status-in-card settings-autosave-status" role="status"></p>
 
           <div class="section-card section-card-backup">
             <div class="section-card-head">
@@ -566,6 +593,7 @@
               <div class="backup-fields">
                 <label class="label" for="fullBackupFile">Backup file</label>
                 <input type="file" id="fullBackupFile" class="input input-file" accept="application/json,.json" />
+                <p id="backupFileName" class="help backup-file-name" aria-live="polite"></p>
                 <div class="label-row">
                   <label class="label" for="backupImportPass">Password</label>
                   <button type="button" class="btn-toggle-password" data-password-for="backupImportPass"></button>
@@ -578,17 +606,26 @@
                   maxlength="256"
                   placeholder="If encrypted"
                 />
+                <label class="check-row">
+                  <input id="backupRestoreConfirm" type="checkbox" />
+                  <span>Replace all keys and contacts on this device</span>
+                </label>
+                <div class="field-group field-group-tight">
+                  <label class="label" for="backupRestoreToken">Confirm</label>
+                  <input id="backupRestoreToken" class="input" type="text" autocomplete="off" placeholder="Type REPLACE" />
+                </div>
+                <button type="button" id="restoreFullBackupBtn" class="btn btn-secondary" disabled>Restore backup</button>
               </div>
             </div>
 
-            <p id="backupStatus" class="status status-in-card" role="status"></p>
+            <p id="backupStatus" class="status status-in-card" role="status" aria-live="polite"></p>
           </div>
 
         </section>
       </div>
 
-      <nav class="tab-bar" aria-label="Main">
-        <button type="button" class="tab is-active" data-panel="send" id="tab-send">
+      <nav class="tab-bar" role="tablist" aria-label="Main">
+        <button type="button" class="tab is-active" role="tab" aria-selected="true" aria-controls="panel-send" data-panel="send" id="tab-send">
           <span class="tab-icon" aria-hidden="true">
             <svg
               width="20"
@@ -608,7 +645,7 @@
           </span>
           <span id="tab-send-label" class="tab-label">Send</span>
         </button>
-        <button type="button" class="tab" data-panel="decrypt" id="tab-decrypt">
+        <button type="button" class="tab" role="tab" aria-selected="false" aria-controls="panel-decrypt" data-panel="decrypt" id="tab-decrypt">
           <span class="tab-icon" aria-hidden="true">
             <svg
               width="20"
@@ -628,7 +665,7 @@
           </span>
           <span id="tab-decrypt-label" class="tab-label">Decrypt</span>
         </button>
-        <button type="button" class="tab" data-panel="identities" id="tab-identities">
+        <button type="button" class="tab" role="tab" aria-selected="false" aria-controls="panel-identities" data-panel="identities" id="tab-identities">
           <span class="tab-icon" aria-hidden="true">
             <!-- Heroicons: identification -->
             <svg
@@ -649,7 +686,7 @@
           </span>
           <span id="tab-identities-label" class="tab-label">People</span>
         </button>
-        <button type="button" class="tab" data-panel="settings" id="tab-settings">
+        <button type="button" class="tab" role="tab" aria-selected="false" aria-controls="panel-settings" data-panel="settings" id="tab-settings">
           <span class="tab-icon" aria-hidden="true">
             <!-- Heroicons: cog-6-tooth -->
             <svg
@@ -672,6 +709,99 @@
           <span id="tab-settings-label" class="tab-label">Settings</span>
         </button>
       </nav>
+
+      <div id="intro-overlay" class="intro-overlay" hidden role="dialog" aria-modal="true" aria-labelledby="intro-title" aria-describedby="intro-lead">
+        <div class="intro-sheet">
+          <header class="intro-header">
+            <h2 id="intro-title" class="intro-title">Welcome to Shrimpt</h2>
+            <p class="intro-lead" id="intro-lead">A quick map of the popup — each piece matches what you’ll see behind this card.</p>
+          </header>
+
+          <ol class="intro-steps">
+            <li class="intro-step">
+              <div class="intro-visual intro-visual-context" aria-hidden="true">
+                <div class="intro-mock-context">
+                  <div class="intro-mock-slot intro-mock-you">
+                    <span class="intro-mock-kicker">You</span>
+                    <span class="intro-mock-value">Work laptop</span>
+                  </div>
+                  <div class="intro-mock-slot intro-mock-them">
+                    <span class="intro-mock-kicker">Them</span>
+                    <span class="intro-mock-value">Alex</span>
+                  </div>
+                </div>
+              </div>
+              <div class="intro-step-body">
+                <h3 class="intro-step-title">Context bar</h3>
+                <p class="intro-step-text">Choose <strong>You</strong> (your identity) and <strong>Them</strong> (who receives the message) before encrypting.</p>
+              </div>
+            </li>
+
+            <li class="intro-step">
+              <div class="intro-visual intro-visual-tabs" aria-hidden="true">
+                <div class="intro-mock-tabs">
+                  <span class="intro-mock-tab is-active">Send</span>
+                  <span class="intro-mock-tab">Decrypt</span>
+                  <span class="intro-mock-tab">People</span>
+                  <span class="intro-mock-tab">Settings</span>
+                </div>
+              </div>
+              <div class="intro-step-body">
+                <h3 class="intro-step-title">Tabs</h3>
+                <p class="intro-step-text"><strong>Send</strong> encrypts for Them. <strong>Decrypt</strong> pastes ciphertext. <strong>People</strong> manages keys. <strong>Settings</strong> holds backup &amp; pages.</p>
+              </div>
+            </li>
+
+            <li class="intro-step">
+              <div class="intro-visual intro-visual-send" aria-hidden="true">
+                <div class="intro-mock-card">
+                  <span class="intro-mock-label">Message</span>
+                  <span class="intro-mock-input intro-mock-textarea">Hello…</span>
+                  <span class="intro-mock-btn">Encrypt</span>
+                  <span class="intro-mock-chip">!shpt!…!shpt!</span>
+                </div>
+              </div>
+              <div class="intro-step-body">
+                <h3 class="intro-step-title">Send flow</h3>
+                <p class="intro-step-text">Type a message, encrypt, then copy the <span class="inline-code">!shpt!</span> block to paste anywhere.</p>
+              </div>
+            </li>
+
+            <li class="intro-step">
+              <div class="intro-visual intro-visual-field" aria-hidden="true">
+                <div class="intro-mock-card">
+                  <span class="intro-mock-label">Text field</span>
+                  <span class="intro-mock-input intro-mock-textarea">Type here…</span>
+                  <span class="intro-mock-btn">Click to encrypt</span>
+                </div>
+              </div>
+              <div class="intro-step-body">
+                <h3 class="intro-step-title">On web pages</h3>
+                <p class="intro-step-text">Focus a text field to see <strong>Click to encrypt</strong>. Set <strong>Them</strong> in the popup first. Press Escape to dismiss the tooltip.</p>
+              </div>
+            </li>
+
+            <li class="intro-step">
+              <div class="intro-visual intro-visual-page" aria-hidden="true">
+                <div class="intro-mock-page">
+                  <span class="intro-mock-cipher">!shpt!abc…!shpt!</span>
+                  <span class="intro-mock-arrow" aria-hidden="true">→</span>
+                  <span class="intro-mock-plain">Decrypted text</span>
+                </div>
+              </div>
+              <div class="intro-step-body">
+                <h3 class="intro-step-title">Auto-decrypt</h3>
+                <p class="intro-step-text">With auto-decrypt on, Shrimpt finds ciphertext on pages and shows readable text inline (Settings → Pages).</p>
+              </div>
+            </li>
+          </ol>
+
+          <div class="intro-actions">
+            <button id="introDismissBtn" type="button" class="btn btn-primary intro-dismiss">Got it</button>
+            <button id="introSkipBtn" type="button" class="btn btn-link intro-skip">Skip tour</button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <script type="module" src="./popup.js"></script>

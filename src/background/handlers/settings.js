@@ -19,6 +19,6 @@ export async function handleGetSettings() {
 }
 
 export async function handleUpdateSettings(payload) {
-  await saveSettings(payload);
+  await saveSettings(payload && typeof payload === "object" ? payload : {});
   return getResolvedClientSettings();
 }

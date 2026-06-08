@@ -21,6 +21,10 @@ const DEFAULT_SETTINGS = {
   selectedRecipientContactId: null
 };
 
+/**
+ * Theme helpers below mirror src/lib/theme.js (resolveTheme + applyTheme).
+ * Content scripts cannot ES-import modules; keep logic identical when changing theme.js.
+ */
 function resolveUiTheme(mode) {
   if (mode === "dark") return "dark";
   if (mode === "light") return "light";
@@ -488,8 +492,11 @@ async function buildDecryptedNode(compactEnvelope) {
   const inner = document.createElement("span");
   inner.className = "shrimpt-envelope-inner";
 
-  const reveal = document.createElement("span");
+  const reveal = document.createElement(settingsCache?.autoDecrypt ? "span" : "button");
   reveal.className = "shrimpt-envelope-reveal";
+  if (!settingsCache?.autoDecrypt) {
+    reveal.type = "button";
+  }
   reveal.hidden = true;
   reveal.textContent = "Decrypting...";
 
@@ -498,12 +505,13 @@ async function buildDecryptedNode(compactEnvelope) {
 
   if (!settingsCache?.autoDecrypt) {
     shrimptLog("decrypt", "chip: autoDecrypt off — decrypt on click", { compactLen: compact.length });
-    reveal.textContent = "[Shrimpt — click to decrypt]";
+    reveal.textContent = "Click to decrypt";
     reveal.hidden = false;
-    inner.style.cursor = "pointer";
-    inner.addEventListener("click", async () => {
-      inner.style.cursor = "";
+    reveal.setAttribute("aria-label", "Decrypt Shrimpt message");
+    reveal.addEventListener("click", async () => {
+      reveal.disabled = true;
       await revealMessage(compact, reveal, { forPageScan: false });
+      reveal.disabled = false;
     });
     return host;
   }
@@ -535,6 +543,7 @@ async function buildDecryptedNode(compactEnvelope) {
     } else {
       reveal.textContent = DECRYPT_FAILED_MESSAGE;
     }
+    reveal.setAttribute("role", "alert");
     reveal.hidden = false;
     return host;
   }
@@ -544,11 +553,13 @@ function applyDecryptResultToUi(result, reveal) {
   if (result?.skipped && result.code === "WRONG_CONVERSATION") {
     shrimptLog("decrypt", "UI: wrong conversation (skipped)", { code: result.code });
     reveal.textContent =
-      "This message was not sent by the contact selected as Them in Shrimpt. Pick Anyone or the right person in the popup.";
+      "This message was not sent by the contact selected as Them in Shrimpt. Pick a contact or change Them in the popup.";
+    reveal.setAttribute("role", "alert");
     reveal.hidden = false;
     return false;
   }
   reveal.textContent = result.plaintext ?? "";
+  reveal.removeAttribute("role");
   reveal.dataset.verified = String(result.verified);
   if (result?.conversationMismatch) {
     reveal.title =
@@ -585,6 +596,7 @@ async function revealMessage(compactEnvelope, reveal, options = {}) {
     } else {
       reveal.textContent = DECRYPT_FAILED_MESSAGE;
     }
+    reveal.setAttribute("role", "alert");
     reveal.hidden = false;
   }
 }
@@ -982,13 +994,19 @@ function detachFieldBinding() {
   if (fieldBinding.onScroll) window.removeEventListener("scroll", fieldBinding.onScroll, true);
   if (fieldBinding.onResize) window.removeEventListener("resize", fieldBinding.onResize);
   if (fieldBinding.onEscape) document.removeEventListener("keydown", fieldBinding.onEscape, true);
+  if (fieldBinding.onFocusOut && fieldBinding.target) {
+    fieldBinding.target.removeEventListener("focusout", fieldBinding.onFocusOut);
+  }
   fieldBinding = null;
 }
 
 function setEncryptTooltipBusy(busy) {
   const root = fieldBinding?.encryptTooltipHost?.shadowRoot;
   const btn = root?.querySelector('[data-a="encrypt-tip"]');
-  if (btn) btn.disabled = busy;
+  if (btn) {
+    btn.disabled = busy;
+    btn.setAttribute("aria-busy", busy ? "true" : "false");
+  }
 }
 
 function positionEncryptTooltip(host, el) {
@@ -1022,6 +1040,7 @@ async function createEncryptTooltipHost(targetEl, onEncryptClick) {
   encryptTipBtn.className = "tip";
   encryptTipBtn.setAttribute("data-a", "encrypt-tip");
   encryptTipBtn.textContent = "Click to encrypt";
+  encryptTipBtn.setAttribute("aria-label", "Encrypt field text with Shrimpt. Choose Them in the popup first.");
   shadow.appendChild(encryptTipBtn);
   const keepEditorSelection = (e) => { e.preventDefault(); };
   encryptTipBtn.addEventListener("mousedown", keepEditorSelection);
@@ -1081,7 +1100,10 @@ async function onFieldToolbarEncryptNow() {
     });
     if (!el.isConnected) return;
     applyWrappedCiphertextWithSpec(el, fk, wrapEnvelopeCompact(compact), spec);
-    setEncryptTooltipLabel("Click to encrypt");
+    setEncryptTooltipLabel("Encrypted!");
+    setTimeout(() => {
+      if (fieldBinding) setEncryptTooltipLabel("Click to encrypt");
+    }, 1600);
     shrimptLog("encrypt", "field encrypted ok", { specMode: spec.mode });
   } catch (e) {
     const msg = e?.message === "LOCKED"
@@ -1097,7 +1119,10 @@ async function onFieldToolbarEncryptNow() {
 function setEncryptTooltipLabel(text) {
   const root = fieldBinding?.encryptTooltipHost?.shadowRoot;
   const btn = root?.querySelector('[data-a="encrypt-tip"]');
-  if (btn) btn.textContent = text;
+  if (btn) {
+    btn.textContent = text;
+    btn.setAttribute("aria-label", text);
+  }
 }
 
 async function startButtonReplaceBinding(el, fk) {
@@ -1122,6 +1147,16 @@ async function startButtonReplaceBinding(el, fk) {
   };
   document.addEventListener("keydown", onEscape, true);
 
+  const onFocusOut = () => {
+    setTimeout(() => {
+      if (!fieldBinding) return;
+      const ae = document.activeElement;
+      if (ae === el || fieldBinding.encryptTooltipHost?.contains(ae)) return;
+      detachFieldBinding();
+    }, 150);
+  };
+  el.addEventListener("focusout", onFocusOut);
+
   fieldBinding = {
     target: el,
     mode: "button_replace",
@@ -1129,7 +1164,8 @@ async function startButtonReplaceBinding(el, fk) {
     encryptTooltipHost,
     onScroll,
     onResize: reposition,
-    onEscape
+    onEscape,
+    onFocusOut
   };
 }
 

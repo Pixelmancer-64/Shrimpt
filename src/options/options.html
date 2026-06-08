@@ -35,29 +35,29 @@
         border: 1px solid var(--bw-border);
         border-radius: var(--radius);
         margin-bottom: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-sm);
       }
 
-      .options-card label {
-        display: block;
-        margin-top: 12px;
-        font-weight: 600;
-        color: var(--bw-text);
-      }
-
-      .options-card label:first-child {
-        margin-top: 0;
+      .options-card .label {
+        margin-bottom: 0;
       }
 
       .options-card input[type="number"],
       .options-card select {
         width: 100%;
         max-width: 280px;
-        margin-top: 4px;
       }
 
       .options-card .check-row {
-        margin-top: 12px;
-        margin-bottom: 0;
+        margin: 0;
+      }
+
+      .options-popup-link {
+        align-self: flex-start;
+        margin: 0;
+        padding: 0;
       }
 
       .pin-gate {
@@ -73,6 +73,11 @@
         display: none !important;
       }
 
+      #pin-create-fields[hidden],
+      #pin-unlock-fields[hidden] {
+        display: none !important;
+      }
+
       #pin-gate-title {
         margin: 0 0 8px;
         color: var(--bw-text);
@@ -81,11 +86,7 @@
       #pin-gate-desc {
         margin: 0 0 12px;
         color: var(--bw-muted);
-        font-size: 13px;
-      }
-
-      #saveBtn {
-        margin-top: 16px;
+        font-size: 1rem;
       }
 
       #pinGateStatus,
@@ -103,23 +104,25 @@
         <h2 id="pin-gate-title">Unlock</h2>
         <p id="pin-gate-desc">A strong secret protects your keys for this browser session.</p>
         <div id="pin-create-fields">
-          <label for="pinCreatePin">Secret</label>
+          <label class="label" for="pinCreatePin">Secret</label>
           <input id="pinCreatePin" class="input" type="password" minlength="12" maxlength="256" autocomplete="new-password" />
-          <label for="pinCreateConfirm">Confirm secret</label>
+          <label class="label" for="pinCreateConfirm">Confirm secret</label>
           <input id="pinCreateConfirm" class="input" type="password" minlength="12" maxlength="256" autocomplete="new-password" />
           <button type="button" id="pinCreateBtn" class="btn btn-primary">Save secret</button>
         </div>
         <div id="pin-unlock-fields" hidden>
-          <label for="pinUnlockInput">Secret</label>
+          <label class="label" for="pinUnlockInput">Secret</label>
           <input id="pinUnlockInput" class="input" type="password" maxlength="256" autocomplete="current-password" />
-          <button type="button" id="pinUnlockBtn" class="btn btn-primary">Unlock</button>
+          <button type="button" id="pinUnlockBtn" class="btn btn-primary" disabled>Unlock</button>
         </div>
-        <p id="pinGateStatus" class="status" role="status"></p>
+        <p id="pinGateStatus" class="status" role="status" aria-live="polite"></p>
       </div>
 
       <main id="main-options" hidden>
-        <div class="options-card">
-          <label for="themeSelect">Appearance</label>
+        <p class="help">Changes save automatically. Use the toolbar popup for Send, Decrypt, and People.</p>
+
+        <div class="options-card section-card">
+          <label class="label" for="themeSelect">Appearance</label>
           <select id="themeSelect" class="input">
             <option value="system">System</option>
             <option value="light">Light</option>
@@ -131,12 +134,12 @@
             <span>Auto-decrypt on pages</span>
           </label>
 
-          <label for="observerDebounceMs">Scan debounce (ms)</label>
+          <label class="label" for="observerDebounceMs">Scan debounce (ms)</label>
           <input id="observerDebounceMs" class="input" type="number" min="50" step="50" />
+          <p class="help">Lower = more responsive on dynamic pages; higher = less CPU use.</p>
         </div>
 
-        <button id="saveBtn" type="button" class="btn btn-primary">Save</button>
-        <div id="status" class="status" role="status"></div>
+        <div id="status" class="status" role="status" aria-live="polite"></div>
       </main>
     </div>
 

@@ -1,0 +1,101 @@
+/* Shared design tokens — import from popup, options; mirror in content shadow CSS. */
+
+:root {
+  color-scheme: light;
+
+  --shrimp-pink-50: #f7e9ea;
+  --shrimp-pink-100: #e8c2c6;
+  --shrimp-pink-500: #d1939a;
+  --shrimp-pink-700: #a36b71;
+
+  --action-primary: var(--shrimp-pink-500);
+  --action-hover: var(--shrimp-pink-700);
+  --text-main: #1a1a1b;
+  --bg-app: #f4f4f5;
+  --bg-element: #ffffff;
+
+  --border-radius-sm: 4px;
+  --border-radius-md: 8px;
+  --border-subtle: 1px solid #e2e2e5;
+
+  --text-muted: #5c5c61;
+  --text-strong: #2e2e30;
+  --border-color: #e2e2e5;
+  --font: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+
+  --bw-bg: var(--bg-app);
+  --bw-surface: var(--bg-app);
+  --bw-elevated: color-mix(in srgb, var(--text-main) 6%, var(--bg-app));
+  --bw-border: var(--border-color);
+  --bw-text: var(--text-main);
+  --bw-muted: var(--text-muted);
+  --bw-accent: var(--action-primary);
+  --bw-accent-soft: color-mix(in srgb, var(--shrimp-pink-500) 20%, transparent);
+  --bw-accent-hover: var(--action-hover);
+  --bw-warm: var(--shrimp-pink-700);
+  --bw-warm-soft: color-mix(in srgb, var(--shrimp-pink-700) 16%, transparent);
+  --bw-focus: color-mix(in srgb, var(--shrimp-pink-500) 38%, transparent);
+  --bw-danger: #c23b3b;
+  --bw-success: #2d7a4f;
+  --radius: var(--border-radius-md);
+  --radius-sm: var(--border-radius-sm);
+
+  --btn-primary-fg: #ffffff;
+  --btn-secondary-hover: #e2e3e6;
+
+  --select-chevron-stroke: %235c5c61;
+  --overlay-backdrop: color-mix(in srgb, var(--bg-app) 22%, rgb(10 11 12 / 0.65));
+  --intro-shadow: 0 12px 40px rgb(10 11 12 / 0.28);
+  --pin-strength-strong: var(--shrimp-pink-100);
+  --input-bg: transparent;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --shrimp-pink-900: #4a2f32;
+  --shrimp-pink-50: #241a1c;
+  --shrimp-pink-100: #e8c2c6;
+
+  --bg-app: #0a0b0c;
+  --bg-surface: #141516;
+  --bg-element: #1f2022;
+
+  --text-main: #ffffff;
+  --text-secondary: #bfc3cb;
+  --text-muted: #707070;
+
+  --action-primary: var(--shrimp-pink-500);
+  --action-hover: var(--shrimp-pink-100);
+  --action-subtle: var(--shrimp-pink-900);
+
+  --border-subtle: 1px solid #2d2f32;
+  --border-color: #2d2f32;
+  --text-strong: #f2f2f3;
+
+  --bw-bg: var(--bg-app);
+  --bw-surface: var(--bg-app);
+  --bw-elevated: color-mix(in srgb, var(--text-main) 8%, var(--bg-app));
+  --bw-border: var(--border-color);
+  --bw-text: var(--text-main);
+  --bw-muted: var(--text-secondary);
+  --bw-accent: var(--action-primary);
+  --bw-accent-hover: var(--action-hover);
+  --bw-accent-soft: color-mix(in srgb, var(--shrimp-pink-500) 26%, transparent);
+  --bw-warm: var(--shrimp-pink-700);
+  --bw-warm-soft: color-mix(in srgb, var(--shrimp-pink-500) 18%, transparent);
+  --bw-focus: color-mix(in srgb, var(--shrimp-pink-500) 45%, transparent);
+  --bw-danger: #e87070;
+  --bw-success: #6ecf9a;
+  --bw-scroll-thumb: rgb(255 255 255 / 0.18);
+  --bw-scroll-thumb-hover: rgb(255 255 255 / 0.32);
+
+  --btn-secondary-hover: #2f3236;
+  --btn-primary-fg: #ffffff;
+
+  --select-chevron-stroke: %23bfc3cb;
+  --overlay-backdrop: color-mix(in srgb, var(--bg-app) 12%, rgb(0 0 0 / 0.78));
+  --intro-shadow: 0 12px 40px rgb(0 0 0 / 0.55);
+  --pin-strength-strong: var(--shrimp-pink-500);
+  --input-bg: var(--bg-element);
+}

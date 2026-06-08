@@ -7,7 +7,9 @@ export const STORAGE_KEYS = {
   ACTIVE_PROFILE_ID: "activeProfileId",
   SETTINGS: "settings",
   /** PBKDF2 salt + hash (Base64); never store plaintext unlock secret */
-  PIN_RECORD: "pinRecord"
+  PIN_RECORD: "pinRecord",
+  /** Popup tour dismissed after first unlock */
+  ONBOARDING_COMPLETE: "onboardingComplete"
 };
 
 export const DEFAULT_SETTINGS = {

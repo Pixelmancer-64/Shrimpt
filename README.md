@@ -12,11 +12,14 @@ Ciphertext is wrapped in recognizable delimiters (`!shpt!...!shpt!`) so the exte
 2. **Contact exchange** — Public keys are shared via encrypted "handshake" blobs protected by a short code, or as plain JSON.
 3. **Hybrid encryption** — Messages are encrypted with a random AES-256-GCM key, which is then RSA-OAEP wrapped for both the recipient *and* the sender (dual envelope), so either party can decrypt later.
 4. **Signature** — The entire ciphertext payload is signed with RSA-PSS so recipients can verify the sender's identity.
-5. **Inline decryption** — A content script scans the page for ciphertext markers using a `MutationObserver` and replaces them with decrypted plaintext chips inside closed Shadow DOM, preventing the host page from reading the content.
+5. **Inline decryption** — A content script scans the page for ciphertext markers using a `MutationObserver` and replaces them with decrypted text rendered inside a closed Shadow DOM, preventing the host page from reading the content.
 
 ## Features
 
-- Encrypt and decrypt from the popup
+- **Popup** with four tabs: **Send**, **Decrypt**, **People**, and **Settings**
+- **Context bar** — pick **You** (your identity) and **Them** (recipient contact) before encrypting
+- **Appearance** — light, dark, or system theme (popup and extension options)
+- Encrypt and decrypt from the popup or in-page from text fields
 - Automatic page scanning for ciphertext
 - Session locking with PBKDF2-derived passphrase (310,000 iterations)
 - Full encrypted backup export/import
@@ -69,27 +72,34 @@ Enter the passphrase to unlock your keys for the browser session.
 
 ### 3. Create an identity and export it
 
-Generate a profile (RSA key pairs) and export the public key as a handshake blob to share with contacts.
+Open the **People** tab, generate a profile (RSA key pairs), and export the public key as a handshake blob or JSON to share with contacts.
 
 <img src="docs/etp3.gif" alt="Creating an identity and exporting" width="400">
 
 ### 4. Import a contact
 
-Import a contact's public key from a handshake blob or plain JSON.
+On **People**, import a contact's public key from a handshake blob or plain JSON.
 
 <img src="docs/etp4.gif" alt="Importing a contact" width="400">
 
 ### 5. Send an encrypted message from the popup
 
-Type a message in the popup, encrypt it for a contact, and copy the ciphertext to paste anywhere.
+Choose **You** and **Them** in the context bar, open **Send**, type a message, encrypt it for the selected contact, and copy the ciphertext to paste anywhere.
 
 <img src="docs/etp5.gif" alt="Encrypting from the popup" width="400">
 
 ### 6. Send and read encrypted messages directly from the app
 
-Encrypt text in-place from any text field on a page, and see decrypted messages appear inline automatically.
+Set **Them** in the popup context bar first, then focus any text field on a page. A **Click to encrypt** tooltip appears — press Escape to dismiss it. Encrypted text uses `!shpt!…!shpt!` delimiters.
+
+With **auto-decrypt** on (Settings → Pages), ciphertext on pages decrypts automatically. When auto-decrypt is off, click **Click to decrypt** on each inline chip (keyboard-accessible button).
 
 <img src="docs/etp6.gif" alt="In-page encrypt and decrypt" width="400">
+
+### Settings
+
+- **Popup → Settings**: appearance (light/dark/system), auto-decrypt on pages, encrypted backup, and **Show tour again**
+- **Extension options** (linked from Settings): same appearance and auto-decrypt controls, plus **scan debounce** (lower = more responsive on SPAs; higher = less CPU)
 
 ## Tech Stack
 

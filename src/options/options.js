@@ -6,18 +6,31 @@ applyTheme(document.documentElement, "system");
 const autoDecrypt = document.getElementById("autoDecrypt");
 const themeSelect = document.getElementById("themeSelect");
 const observerDebounceMs = document.getElementById("observerDebounceMs");
-const saveBtn = document.getElementById("saveBtn");
 const status = document.getElementById("status");
 const pinGate = document.getElementById("pin-gate");
 const mainOptions = document.getElementById("main-options");
+const pinUnlockBtn = document.getElementById("pinUnlockBtn");
 
 let unbindThemeWatcher = () => {};
+let saveTimer = null;
 
 function applyThemeFromSettings(settings) {
   unbindThemeWatcher();
   const mode = normalizeThemeMode(settings?.theme);
   applyTheme(document.documentElement, mode);
   unbindThemeWatcher = bindThemeWatcher(mode, document.documentElement);
+}
+
+function setStatusSuccess(message) {
+  if (!status) return;
+  status.textContent = message;
+  status.classList.remove("is-error");
+  status.classList.add("is-success");
+}
+
+function updatePinUnlockValidation() {
+  const pin = document.getElementById("pinUnlockInput")?.value?.trim() ?? "";
+  if (pinUnlockBtn) pinUnlockBtn.disabled = !pin.length;
 }
 
 init().catch(console.error);
@@ -49,6 +62,7 @@ function bindPinEvents() {
     const el = document.getElementById(id);
     el?.addEventListener("input", () => {
       if (el.value.length > 256) el.value = el.value.slice(0, 256);
+      if (id === "pinUnlockInput") updatePinUnlockValidation();
     });
   }
   document.getElementById("pinUnlockInput")?.addEventListener("keydown", (e) => {
@@ -107,6 +121,7 @@ function showPinUnlock() {
   document.getElementById("pin-unlock-fields").hidden = false;
   document.getElementById("pin-gate-title").textContent = "Unlock";
   document.getElementById("pin-gate-desc").textContent = "Enter your secret to change settings.";
+  updatePinUnlockValidation();
   document.getElementById("pinUnlockInput")?.focus();
 }
 
@@ -118,11 +133,18 @@ async function showMainOptions() {
   autoDecrypt.checked = Boolean(settings.autoDecrypt);
   themeSelect.value = normalizeThemeMode(settings.theme);
   observerDebounceMs.value = settings.observerDebounceMs;
+  themeSelect.focus();
 }
 
-saveBtn.addEventListener("click", async () => {
+function scheduleAutosave() {
+  if (saveTimer) clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => persistSettings(), 400);
+}
+
+async function persistSettings() {
+  if (!status) return;
   status.textContent = "";
-  status.classList.remove("is-error");
+  status.classList.remove("is-error", "is-success");
   try {
     const updated = await request(MESSAGE_TYPES.UPDATE_SETTINGS, {
       autoDecrypt: autoDecrypt.checked,
@@ -130,7 +152,10 @@ saveBtn.addEventListener("click", async () => {
       observerDebounceMs: Number(observerDebounceMs.value) || 250
     });
     applyThemeFromSettings(updated);
-    status.textContent = "Saved.";
+    setStatusSuccess("Saved.");
+    setTimeout(() => {
+      if (status.textContent === "Saved.") status.textContent = "";
+    }, 1400);
   } catch (error) {
     status.textContent =
       error?.code === ERROR_CODES.LOCKED || error?.message === "LOCKED"
@@ -138,7 +163,12 @@ saveBtn.addEventListener("click", async () => {
         : error.message;
     status.classList.add("is-error");
   }
-});
+}
+
+autoDecrypt.addEventListener("change", scheduleAutosave);
+themeSelect.addEventListener("change", scheduleAutosave);
+observerDebounceMs.addEventListener("change", scheduleAutosave);
+observerDebounceMs.addEventListener("input", scheduleAutosave);
 
 function request(type, payload = {}) {
   return new Promise((resolve, reject) => {
